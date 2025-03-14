@@ -1,12 +1,13 @@
-超级马里奥制造2微操模拟器
+超级马里奥制造2计算器
 
-功能及用法稍后更新
+![1](https://github.com/user-attachments/assets/fd75c089-cdea-49de-874b-27bf8324537c)
 
-![QQ截图20240305225342](https://github.com/JiXiaomai/SMM2Calculator/assets/20100838/f4331dae-fffd-4898-9a33-c06bcf576d19)
+可以使用的操作指令：[CommandTexts](https://github.com/user-attachments/files/19239102/CommandTexts.txt)
 
-![QQ截图20240305230452](https://github.com/JiXiaomai/SMM2Calculator/assets/20100838/c2a82461-727e-4602-81e6-ab686365078d)
-![QQ截图20240305230308](https://github.com/JiXiaomai/SMM2Calculator/assets/20100838/5adab996-7d52-4016-bf87-6101c7c472c2)
-![QQ截图20240305225342](https://github.com/JiXiaomai/SMM2Calculator/assets/20100838/21a1f0bc-d84a-49cf-b342-ce3bf3feb5cd)
+[注意]少数几个特殊指令不能复合使用
 
-可以使用的操作指令
-![QQ图片20240306081953](https://github.com/JiXiaomai/SMM2Calculator/assets/20100838/f0a8270f-b628-4bb3-81ce-90952d821ca4)
+[注意]起跳后不能使用地面指令
+
+[注意]起跳后落地时会有特殊判定，此部分未完善，需要分段计算
+
+[注意]地面走位的蹲下/站立/走跑动作复合有特殊判定，未完善
