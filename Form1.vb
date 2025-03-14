@@ -1,10 +1,21 @@
 ﻿
+Imports System.Collections.ObjectModel
 Imports System.Drawing.Imaging
+Imports System.Globalization
 Imports System.IO
+Imports System.Resources
 Imports System.Runtime.InteropServices
-Imports System.Security.Cryptography
 Imports System.Threading
+Imports ProcessMemoryScanner
+
 Partial Class Form1
+    <DllImport("user32.dll", SetLastError:=True)>
+    Private Shared Function SetParent(ByVal hWndChild As IntPtr, ByVal hWndNewParent As IntPtr) As IntPtr
+    End Function
+
+    <DllImport("user32.dll", SetLastError:=True)>
+    Private Shared Function FindWindow(ByVal lpClassName As String, ByVal lpWindowName As String) As IntPtr
+    End Function
     Function SNG(A As Byte(), B As Byte()) As Single
         SNG = BitConverter.ToSingle(A, 0) + BitConverter.ToSingle(B, 0)
     End Function
@@ -90,31 +101,74 @@ Partial Class Form1
             BinData(i) = TP(3 - i)
         Next
     End Function
-    Function GetWalkFrame(f As Integer, SPX As Single) As Integer
-        '未测试
-        Select Case Math.Abs(SPX)
-            Case Is = 0
-                Return 0
-            Case Is < 0.7
-                Return 1
-            Case Is < 1.1
-                Return 2
-            Case Is < 1.5
-                Return 3
-            Case Is < 1.75
-                Return 1
-            Case Is < 2
-                Return 2
-            Case Is < 2.15
-                Return 3
-            Case Is < 2.25
-                Return 1
-            Case Else
-                Return ((f \ 3) Mod 3) + 1
-        End Select
+    '走路+跑步动作帧
+    Dim WalkFrameR() As Integer = New Integer() {3, 3, 3, 1, 1, 2, 2, 2, 3, 3, 1, 1, 1, 2, 2}
+    Dim WalkFrameW() As Integer = New Integer() {2, 2, 2, 2, 3, 3, 3, 3, 3, 1, 1, 1, 1, 2, 2, 2, 2, 2, 3, 3, 3, 3, 1, 1, 1, 1, 1}
+    Function GetWalkFrame(f As Integer, isRUN As Boolean) As Integer
+        If isRUN Then
+            Select Case f
+                Case 1
+                    Return 0
+                Case Is < 12
+                    Return 1
+                Case Is < 19
+                    Return 2
+                Case Is < 23
+                    Return 3
+                Case Is < 28
+                    Return 1
+                Case Is < 31
+                    Return 2
+                Case Is < 35
+                    Return 3
+                Case Is < 39
+                    Return 1
+                Case Is < 42
+                    Return 2
+                Case Is < 45
+                    Return 3
+                Case Is < 48
+                    Return 1
+                Case Is < 51
+                    Return 2
+                Case Else
+                    '333 11 222 33 111 22
+                    Return WalkFrameR((f - 51) Mod 15)
+            End Select
+        Else
+            Select Case f
+                Case 1
+                    Return 0
+                Case Is < 12
+                    Return 1
+                Case Is < 20
+                    Return 2
+                Case Is < 27
+                    Return 3
+                Case Is < 32
+                    Return 1
+                Case Is < 37
+                    Return 2
+                Case Is < 41
+                    Return 3
+                Case Is < 46
+                    Return 1
+                Case Is < 50
+                    Return 2
+                Case Is < 55
+                    Return 3
+                Case Is < 59
+                    Return 1
+                Case Else
+                    '2222 33333 1111 22222 3333 11111
+                    Return WalkFrameW((f - 59) Mod 27)
+            End Select
+        End If
+
     End Function
 
     Private Sub SaveCamImg(B As Bitmap, F As Integer)
+        '保存动画帧，弃用，未更新
         Dim BB As New Bitmap((CamBlk(1).X - CamBlk(0).X) * 80 + 80, (CamBlk(1).Y - CamBlk(0).Y) * 80 + 80)
         Dim GG As Graphics = Graphics.FromImage(BB)
         GG.DrawImage(B, New Rectangle(0, 0, BB.Width, BB.Height), New Rectangle(CamBlk(0).X * 80, CamBlk(0).Y * 80, BB.Width, BB.Height), GraphicsUnit.Pixel)
@@ -122,33 +176,55 @@ Partial Class Form1
     End Sub
 
     Private Function IsHitSpike(X As Single, Y As Single) As Boolean
+        '判定检测
         If SpikeBlk Is Nothing Then
             Return False
         End If
         '碰撞判定 16*12
         '伤害判定 16*14 16*7
         '刺
-        '绿花8*21
+        '绿花8*21 大绿花24*42
+        '火花6*14
+
         For i As Integer = 0 To UBound(SpikeBlk)
-            Select Case BlkType(i)
-                Case 0 '刺
-                    If RectSetup(0, X, (NumH.Value - 3) * 16 - Y + 4, 0, 0, CSng(SpikeBlk(i).X * 16), CSng(SpikeBlk(i).Y * 16), 0, 0) Then
+            Select Case SpikeBlk(i).type
+                Case 0, 3 '刺
+                    If RectSetup(0,
+                                     X, (NumH.Value - 1) * 16 - Y + If(CkWU.Checked, 0.1, 4), 0, 0,
+                                     CSng(SpikeBlk(i).x * 8), CSng(SpikeBlk(i).y * 8),
+                                     0, 0) Then
                         Return True
                     End If
                 Case 1 '绿花
                     If RectSetup(1,
-                                 X, (NumH.Value - 3) * 16 - Y + IIf(CkDuck.Checked, 9, 2),
-                                 16, IIf(CkDuck.Checked, 7, 14),
-                                 CSng(SpikeBlk(i).X * 16), CSng(SpikeBlk(i).Y * 16) - 8,
+                                 X, (NumH.Value - 1) * 16 - Y + If(CkDuck.Checked, 9, 2),
+                                 16, If(CkDuck.Checked, 7, 14),
+                                 CSng(SpikeBlk(i).x * 8 + 4), CSng(SpikeBlk(i).y * 8) - 4,
                                  8, 21) Then
                         Return True
                     End If
                 Case 2 '倒绿花
                     If RectSetup(1,
-                                 X, (NumH.Value - 3) * 16 - Y + IIf(CkDuck.Checked, 9, 2),
-                                 16, IIf(CkDuck.Checked, 7, 14),
-                                 CSng(SpikeBlk(i).X * 16), CSng(SpikeBlk(i).Y * 16),
+                                 X, (NumH.Value - 1) * 16 - Y + If(CkDuck.Checked, 9, 2),
+                                 16, If(CkDuck.Checked, 7, 14),
+                                 CSng(SpikeBlk(i).x * 8 + 4), CSng(SpikeBlk(i).y * 8) + 4,
                                  8, 21) Then
+                        Return True
+                    End If
+                Case 4 '大绿花
+                    If RectSetup(1,
+                                 X, (NumH.Value - 1) * 16 - Y + If(CkDuck.Checked, 9, 2),
+                                 16, If(CkDuck.Checked, 7, 14),
+                                 CSng(SpikeBlk(i).x * 8 + 4), CSng(SpikeBlk(i).y * 8) - 26,
+                                 24, 42) Then
+                        Return True
+                    End If
+                Case 5 '倒大绿花
+                    If RectSetup(1,
+                                 X, (NumH.Value - 1) * 16 - Y + If(CkDuck.Checked, 9, 2),
+                                 16, If(CkDuck.Checked, 7, 14),
+                                 CSng(SpikeBlk(i).x * 8 + 4), CSng(SpikeBlk(i).y * 8),
+                                 24, 42) Then
                         Return True
                     End If
             End Select
@@ -164,6 +240,7 @@ Partial Class Form1
     Private Function RectSetup(type As Integer,
                                x1 As Single, y1 As Single, w1 As Single, h1 As Single,
                                x2 As Single, y2 As Single, w2 As Single, h2 As Single) As Boolean
+        '矩形碰撞判定
         '   0.1-3.1	  3.1-6	   6-8
         '顶   4 	       0	    0
         '底   4	  	   4	    0
@@ -174,7 +251,7 @@ Partial Class Form1
                     .x = x1
                     .y = y1
                     .w = 16
-                    .h = 12
+                    .h = If(CkWU.Checked, 15.9, 12)
                 End With
                 With SRect(1) '0.1-3.1
                     .x = x2 + 0.1
@@ -205,14 +282,14 @@ Partial Class Form1
                     End If
                 Next
                 Return False
-            Case Else
+            Case 1
                 With SRect(0) 'Mario
                     .x = x1
                     .y = y1
                     .w = w1
                     .h = h1
                 End With
-                With SRect(1) '0.1-3.1
+                With SRect(1)
                     .x = x2
                     .y = y2
                     .w = w2
@@ -224,442 +301,351 @@ Partial Class Form1
                         Math.Abs((SRect(0).h + SRect(1).h) / 2) Then
                     Return True
                 End If
+            Case Else
+                Return False
         End Select
         Return False
     End Function
-    Private Function Draw2(IsSave As Boolean) As Integer
-        If CamBlk Is Nothing Then
-            ReDim CamBlk(1)
-            CamBlk(0).X = 0
-            CamBlk(0).Y = 0
-            CamBlk(1).X = NumW.Value - 1
-            CamBlk(1).Y = NumH.Value - 1
-        End If
-        Dim FRM As Integer = Val(NumericUpDown1.Text)
-        DrawBG(NumW.Value, NumH.Value)
-        Dim B As Bitmap = PB.Image
-        Dim tempB As Bitmap
-        Dim G As Graphics = Graphics.FromImage(B)
-        Dim S() As String = CResult.Split(vbCrLf)
-        Dim SS() As String, i, j As Integer
-        Dim Ps(), Pz() As Point, z, zz As Integer, ZL As Integer, Pk(,) As Single
-        Dim SSS() As String = T2.Text.Split(" ")
-        Dim SpdX() As Single
-        'For i = 0 To 20
-        '    Lbl(i).Visible = False
-        'Next
+    Private Function Draw2(Cmd As String, IsSave As Boolean) As Integer
+        '画图
 
-        ReDim Ps(UBound(S)), Pz(UBound(SSS)), SpdX(UBound(S)), Pk(UBound(S), 1)
-        z = 0
-        For i = 0 To UBound(S)
-            SS = S(i).Split(vbTab)
-            If UBound(SS) > 2 Then
-                Ps(i).X = Val(SS(0)) * 5
-                Ps(i).Y = Val(SS(1)) * 5
-                SpdX(i) = Val(SS(2))
-                Pk(i, 0) = Val(SS(0))
-                Pk(i, 1) = Val(SS(1))
-                z += 1
-            Else
-                Ps(i).X = 999
-                Ps(i).Y = 999
-                Pk(i, 0) = 999
-                Pk(i, 1) = 999
-                SpdX(i) = 0
-            End If
-        Next
+        '相机数据，未更新
+        '弃用
+        'If CamBlk Is Nothing Then
+        '    ReDim CamBlk(1)
+        '    CamBlk(0).X = 0
+        '    CamBlk(0).Y = 0
+        '    CamBlk(1).X = NumW.Value - 1
+        '    CamBlk(1).Y = NumH.Value - 1
+        'End If
+
+
+        Dim i, j As Integer, Opc As Single
 
         '计算钻洞最优偏差
-        Dim mx, mi, nx, ni As Single
-        'ListBox1.Items.Clear()
-        For i = z - 1 To 0 Step -1
-            zz = 1
-            mx = Pk(i, 0)
-            mi = Pk(i, 0)
-            nx = mx
-            ni = mi
-            For j = i - 1 To 0 Step -1
-                If Pk(j, 0) > mx Then mx = Pk(j, 0)
-                If Pk(j, 0) < mi Then mi = Pk(j, 0)
-                If Math.Abs(mx - mi) <= 0.2 Then
-                    nx = mx
-                    ni = mi
-                    zz += 1
-                Else
-                    Exit For
-                End If
-            Next
-            If zz >= 4 Then
-                Label3.Text = zz.ToString & "帧 " & ((ni + nx) / 2).ToString & "[" & Pk(i, 0).ToString & "]-> " & ni.ToString & " - " & nx.ToString
-            End If
-        Next
+        '弃用
+        'Dim mx, mi, nx, ni As Single
+        'For i = 0 To FrameLoc - 1 ' FrameData.Length - 1
+        '    zz = 1
+        '    mx = FrameData(i).X
+        '    mi = FrameData(i).X
+        '    nx = mx
+        '    ni = mi
+        '    For j = i To FrameLoc - 1 'FrameData.Length - 1
+        '        If FrameData(j).X > mx Then mx = FrameData(j).X
+        '        If FrameData(j).X < mi Then mi = FrameData(j).X
+        '        If Math.Abs(mx - mi) <= 0.2 Then
+        '            nx = mx
+        '            ni = mi
+        '            zz += 1
+        '        Else
+        '            Exit For
+        '        End If
+        '    Next
+        '    If zz >= 4 Then
+        '        Label3.Text = zz.ToString & "帧 " & ((ni + nx) / 2).ToString & "[" & FrameData(i).X & "] → " & ni.ToString & " - " & nx.ToString
+        '    End If
+        'Next
 
-        '刷新人物贴图
-        GetCharAct()
-        G.DrawImage(CharAct(0), CSng(TX1.Text) * 5 + OFX, OFY + 5 + (NumH.Value * 80) - CSng(TY1.Text) * 5 - 240, CHW, CHH)
 
+        '背景
+
+        DrawBG(NumW.Value, NumH.Value)
+
+        Dim B As Bitmap = PB.Image
+        Dim G As Graphics = Graphics.FromImage(B)
+
+        '第一帧
+        G.DrawImage(CharAct(0, 0), CSng(TX1.Text) * ImgZoom + OFX,
+                    OFY + (1 + NumH.Value * 16 - CSng(TY1.Text) - 16) * ImgZoom, CHW, CHH)
+        Dim MH As Single = If(CkWU.Checked, 0.1 * ImgZoom, 4 * ImgZoom)
+        Dim MH2 As Single = If(CkWU.Checked, 16 * ImgZoom - 1, 12 * ImgZoom - 1)
         Dim ii, jj As Integer
-        Dim TxtW As Integer
+        Dim TxtW As Integer, Txt As String
+        Dim GrdX, GrdY As Single
+        GrdX = TYW.Value
+        GrdY = TYH.Value
         If CkMove.Checked Then
-            TxtW = GetStrW(SSS(0)) \ 2
+            Txt = FrameData(0).Cmd & FrameData(0).F.ToString
+            TxtW = GetStrW(Txt) \ 2
             For ii = -1 To 1
                 For jj = -1 To 1
-                    G.DrawString(SSS(0), Label1.Font, Brushes.White, Val(TX1.Text) * 5 - TxtW + 40 + ii, 5 + (NumH.Value * 80) - (Val(TY1.Text) * 5) - 240 - 20 + jj)
+                    G.DrawString(Txt, LblCal.Font, Brushes.White, CSng((Val(TX1.Text) + 8) * ImgZoom - TxtW + ii),
+                                CSng(5 + (NumH.Value * 16 - Val(TY1.Text) - 16 - 4) * ImgZoom + jj))
                 Next
             Next
-            G.DrawString(SSS(0), Label1.Font, Brushes.Black, Val(TX1.Text) * 5 - TxtW + 40, 5 + (NumH.Value * 80) - (Val(TY1.Text) * 5) - 240 - 20)
+            G.DrawString(Txt, LblCal.Font, Brushes.Black, CSng((Val(TX1.Text) + 8) * ImgZoom - TxtW),
+                        CSng(5 + (NumH.Value * 16 - Val(TY1.Text) - 16 - 4) * ImgZoom))
         End If
 
-        tempB = New Bitmap(B)
-        ZL = 0
+        'tempB = New Bitmap(B)
         j = 0
-        z = 0
-        If CkTrace.Checked Then
-            For i = 0 To UBound(S) - 1 ' Step -1
-                If Ps(i + 1).Y = 999 Then
-                    If Ps(i).Y = 0 Then
-                        If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                            G.DrawImage(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(GetWalkFrame(i, SpdX(i))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
+
+        For i = 1 To FrameLoc - 1
+            If FrameData(i).F > 0 OrElse i = FrameLoc - 1 Then
+                Opc = 0
+                If CkMove.Checked AndAlso i < FrameLoc - 1 Then
+                    Txt = FrameData(i).Cmd & FrameData(i).F.ToString
+                    TxtW = GetStrW(Txt) \ 2
+                    For ii = -1 To 1
+                        For jj = -1 To 1
+                            G.DrawString(Txt, LblCal.Font, Brushes.White, Int(FrameData(i).X * ImgZoom) - TxtW + 8 * ImgZoom + ii,
+                                         5 + (NumH.Value * 16 - 16 - 4) * ImgZoom - Int(FrameData(i).Y * ImgZoom) + jj)
+                        Next
+                    Next
+                    G.DrawString(Txt, LblCal.Font, Brushes.Black, Int(FrameData(i).X * ImgZoom) - TxtW + 8 * ImgZoom,
+                                 5 + (NumH.Value * 16 - 16 - 4) * ImgZoom - Int(FrameData(i).Y * ImgZoom))
+                End If
+            Else
+                Opc = 1
+            End If
+
+            If CkTrace.Checked OrElse Opc = 0 Then
+                If FrameData(i).Y = GrdY AndAlso FrameData(i).X <= GrdX - 3.1 Then
+                    If IsHitSpike(FrameData(i).X, FrameData(i).Y) Then
+                        G.DrawImage(CharAct(GetWalkFrame(i, AccFrame), 2 + Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * ImgZoom), CHW, CHH)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.Red, FrameData(i).X * ImgZoom,
+                                            (NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
+                        End If
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.Red, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
                     Else
-                        If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                            G.DrawImage(SetReverseColor(CharAct(4)), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(4), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
+                        G.DrawImage(CharAct(GetWalkFrame(i, AccFrame), Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * ImgZoom), CHW, CHH)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.White, FrameData(i).X * ImgZoom,
+                                           (NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
                         End If
-                    End If
-                    If CkFrame.Checked Then G.DrawString(i.ToString, Label1.Font, Brushes.White, Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 220 - Ps(i).Y)
-                    If CkHitbox.Checked Then
-                        G.DrawRectangle(Pens.White, Ps(i).X, 5 + (NumH.Value * 80) - 240 - Ps(i).Y + 20, 79, 59)
-                    End If
-                    z = 0
-                    ZL += 1
-                    If ZL <= UBound(SSS) Then
-                        If CkMove.Checked Then
-                            TxtW = GetStrW(SSS(ZL)) \ 2
-                            For ii = -1 To 1
-                                For jj = -1 To 1
-                                    G.DrawString(SSS(ZL), Label1.Font, Brushes.White, Ps(i).X - TxtW + 40 + ii, 5 + (NumH.Value * 80) - 240 - Ps(i).Y - 20 + jj)
-                                Next
-                            Next
-                            G.DrawString(SSS(ZL), Label1.Font, Brushes.Black, Ps(i).X - TxtW + 40, 5 + (NumH.Value * 80) - 240 - Ps(i).Y - 20)
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.White, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
                     End If
                 Else
-                    z = (z + 1) Mod FRM
-                    If z = FRM - 1 AndAlso Ps(i).Y <> 999 Then
-                        If Ps(i).Y = 0 Then
-                            If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                                G.DrawImage(SetOpacity(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            Else
-                                G.DrawImage(SetOpacity(CharAct(GetWalkFrame(i, SpdX(i))), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            End If
-                        Else
-                            If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                                G.DrawImage(SetOpacity(SetReverseColor(CharAct(4)), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            Else
-                                G.DrawImage(SetOpacity(CharAct(4), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            End If
-                        End If
-                        If CkFrame.Checked Then G.DrawString(i.ToString, Label1.Font, Brushes.White, Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 220 - Ps(i).Y)
+                    If IsHitSpike(FrameData(i).X, FrameData(i).Y) Then
+                        G.DrawImage(CharAct(4, 2 + Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * ImgZoom), CHW, CHH)
                         If CkHitbox.Checked Then
-                            G.DrawRectangle(Pens.White, Ps(i).X, 5 + (NumH.Value * 80) - 240 - Ps(i).Y + 20, 79, 59)
+                            G.DrawRectangle(Pens.Red, FrameData(i).X * ImgZoom,
+                                            (NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
                         End If
-                    End If
-                End If
-                If IsSave Then
-                    If ZL <= UBound(SSS) AndAlso CkCtrl.Checked Then
-                        G.DrawImage(GetButtonImg(Cmd2Button(GetCmd(SSS(ZL)))), 0, (NumH.Value * 80) - 80, 240, 80)
-                    End If
-                    'B.Save(Application.StartupPath & "\temp\" & j.ToString & ".PNG", Imaging.ImageFormat.Png)
-                    SaveCamImg(B, j)
-                    j += 1
-                End If
-            Next
-        Else
-            For i = 0 To UBound(S) - 1 ' Step -1
-                B = New Bitmap(tempB)
-                G = Graphics.FromImage(B)
-                If Ps(i + 1).Y = 999 Then
-                    If Ps(i).Y = 0 Then
-                        If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                            G.DrawImage(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(GetWalkFrame(i, SpdX(i))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.Red, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
                     Else
-                        If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                            G.DrawImage(SetReverseColor(CharAct(4)), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(4), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                        End If
-                    End If
-                    If CkFrame.Checked Then G.DrawString(i.ToString, Label1.Font, Brushes.White, Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 220 - Ps(i).Y)
-                    If CkHitbox.Checked Then
-                        G.DrawRectangle(Pens.White, Ps(i).X, 5 + (NumH.Value * 80) - 240 - Ps(i).Y + 20, 79, 59)
-                    End If
-                    z = 0
-                    ZL += 1
-                    If ZL <= UBound(SSS) Then
-                        If CkMove.Checked Then
-                            TxtW = GetStrW(SSS(ZL)) \ 2
-                            For ii = -1 To 1
-                                For jj = -1 To 1
-                                    G.DrawString(SSS(ZL), Label1.Font, Brushes.White, Ps(i).X - TxtW + 40 + ii, 5 + (NumH.Value * 80) - 240 - Ps(i).Y - 20 + jj)
-                                Next
-                            Next
-                            G.DrawString(SSS(ZL), Label1.Font, Brushes.Black, Ps(i).X - TxtW + 40, 5 + (NumH.Value * 80) - 240 - Ps(i).Y - 20)
-                        End If
-                    End If
-                    tempB = New Bitmap(B)
-                Else
-                    z = (z + 1) Mod FRM
-                    If z = FRM - 1 AndAlso Ps(i).Y <> 999 Then
-                        If Ps(i).Y = 0 Then
-                            If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                                G.DrawImage(SetOpacity(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            Else
-                                G.DrawImage(SetOpacity(CharAct(GetWalkFrame(i, SpdX(i))), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            End If
-                        Else
-                            If IsHitSpike(Pk(i, 0), Pk(i, 1)) Then
-                                G.DrawImage(SetOpacity(SetReverseColor(CharAct(4)), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            Else
-                                G.DrawImage(SetOpacity(CharAct(4), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 240 - Ps(i).Y, CHW, CHH)
-                            End If
-                        End If
-                        If CkFrame.Checked Then G.DrawString(i.ToString, Label1.Font, Brushes.White, Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - 220 - Ps(i).Y)
+                        G.DrawImage(CharAct(4, Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * ImgZoom), CHW, CHH)
                         If CkHitbox.Checked Then
-                            G.DrawRectangle(Pens.White, Ps(i).X, 5 + (NumH.Value * 80) - 240 - Ps(i).Y + 20, 79, 59)
+                            G.DrawRectangle(Pens.White, FrameData(i).X * ImgZoom,
+                                           (NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
+                        End If
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.White, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
                     End If
                 End If
-                If IsSave Then
-                    If ZL <= UBound(SSS) AndAlso CkCtrl.Checked Then
-                        G.DrawImage(GetButtonImg(Cmd2Button(GetCmd(SSS(ZL)))), 0, (NumH.Value * 80) - 80, 240, 80)
-                    End If
-                    'B.Save(Application.StartupPath & "\temp\" & j.ToString & ".PNG", Imaging.ImageFormat.Png)
-                    SaveCamImg(B, j)
-                    j += 1
-                End If
-            Next
-        End If
+            End If
+
+            '保存动画帧
+            If IsSave Then
+                'If ZL <= UBound(SSS) AndAlso CkCtrl.Checked Then 
+                '    G.DrawImage(GetButtonImg(Cmd2Button(GetCmd(SSS(ZL)))), 0, (NumH.Value * 80) - 80, 240, 80)
+                'End If
+                'B.Save(Application.StartupPath & "\temp\" & j.ToString & ".PNG", Imaging.ImageFormat.Png)
+                SaveCamImg(B, j)
+                j += 1
+            End If
+        Next
 
         PB.Image = B
         Return j - 1
     End Function
 
-    Private Function Draw2form(IsSave As Boolean) As Integer
-        If CamBlk Is Nothing Then
-            ReDim CamBlk(1)
-            CamBlk(0).X = 0
-            CamBlk(0).Y = 0
-            CamBlk(1).X = NumW.Value - 1
-            CamBlk(1).Y = NumH.Value - 1
-        End If
-        Dim FRM As Integer = Val(NumericUpDown1.Text)
-        Dim B As Bitmap = New Bitmap(1920, 1080)
+    Private Function Draw3(Cmd As String, BorderColor As Pen) As Bitmap
+        '画角色图
+        Dim i As Integer, Opc As Single
+        Dim B = New Bitmap(CInt(NumW.Value * 16 * ImgZoom), CInt(NumH.Value * 16 * ImgZoom))
         Dim G As Graphics = Graphics.FromImage(B)
-        Dim S() As String = CResult.Split(vbCrLf)
-        Dim SS() As String, i As Integer
-        Dim Ps(), Pz() As Point, z As Integer, ZL As Integer
-        Dim SSS() As String = T2.Text.Split(" ")
-        Dim SpdX() As Single
-        For i = 0 To 20
-            Lbl(i).Visible = False
-        Next
 
-        ReDim Ps(UBound(S)), Pz(UBound(SSS)), SpdX(UBound(S))
-        For i = 0 To UBound(S)
-            SS = S(i).Split(vbTab)
-            If UBound(SS) > 2 Then
-                Ps(i).X = Val(SS(0)) * 5
-                Ps(i).Y = Val(SS(1) - 40) * 5 + 80
-                SpdX(i) = Val(SS(2))
-            Else
-                Ps(i).X = 999
-                Ps(i).Y = 999
-                SpdX(i) = 0
-            End If
-        Next
-        '刷新人物贴图
-        GetCharAct()
-        G.DrawImage(CharAct(0), CSng(TX1.Text) * 5 + OFX, OFY + 5 + (NumH.Value * 80) - CSng(TY1.Text) * 5 + 200 - 80, CHW, CHH)
-
+        '第一帧
+        G.DrawImage(CharAct(0, 0), CSng(TX1.Text) * ImgZoom + OFX,
+                    OFY + (1 + NumH.Value * 16 - CSng(TY1.Text) - 16) * ImgZoom, CHW, CHH)
+        Dim MH As Single = If(CkWU.Checked, 0.1 * ImgZoom, 4 * ImgZoom)
+        Dim MH2 As Single = If(CkWU.Checked, 16 * ImgZoom - 1, 12 * ImgZoom - 1)
         Dim ii, jj As Integer
-        Dim TxtW As Integer
+        Dim TxtW As Integer, Txt As String
+        Dim GrdX, GrdY As Single
+        GrdX = TYW.Value
+        GrdY = TYH.Value
         If CkMove.Checked Then
-            TxtW = GetStrW(If(CkFrame.Checked, SSS(0), GetCmd(SSS(0)))) \ 2
+            Txt = FrameData(0).Cmd & FrameData(0).F.ToString
+            TxtW = GetStrW(Txt) \ 2
             For ii = -1 To 1
                 For jj = -1 To 1
-                    G.DrawString(If(CkFrame.Checked, SSS(0), GetCmd(SSS(0))), Label1.Font, Brushes.White, Val(TX1.Text) * 5 - TxtW + 40 + ii, 5 + (NumH.Value * 80) - 240 - 20 + jj)
+                    G.DrawString(Txt, LblCal.Font, Brushes.White, CSng((Val(TX1.Text) - TxtW + 8) * ImgZoom + ii),
+                               CSng(5 + (NumH.Value * 16 - Val(TY1.Text) - 16 - 4) * ImgZoom + jj))
                 Next
             Next
-            G.DrawString(If(CkFrame.Checked, SSS(0), GetCmd(SSS(0))), Label1.Font, Brushes.Black, Val(TX1.Text) * 5 - TxtW + 40, 5 + (NumH.Value * 80) - 240 - 20)
+            G.DrawString(Txt, LblCal.Font, Brushes.Black, CSng((Val(TX1.Text) - TxtW + 8) * ImgZoom),
+                         CSng(5 + (NumH.Value * 16 - Val(TY1.Text) - 16 - 4) * ImgZoom))
         End If
 
-        ZL = 0
-        z = 0
-        If CkTrace.Checked Then
-            For i = 0 To UBound(S) - 1 ' Step -1
-                If Ps(i + 1).Y = 999 Then
-                    If Ps(i).Y = 0 Then
-                        If IsHitSpike(Ps(i).X, (NumH.Value * 80) - 240 + 10 - Ps(i).Y) Then
-                            G.DrawImage(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(GetWalkFrame(i, SpdX(i))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                        End If
+        For i = 1 To FrameLoc - 1
+            If FrameData(i).F > 0 OrElse i = FrameLoc - 1 Then
+                Opc = 0
+                If CkMove.Checked AndAlso i < FrameLoc - 1 Then
+                    Txt = FrameData(i).Cmd & FrameData(i).F.ToString
+                    TxtW = GetStrW(Txt) \ 2
+                    For ii = -1 To 1
+                        For jj = -1 To 1
+                            G.DrawString(Txt, LblCal.Font, Brushes.White, Int(FrameData(i).X * ImgZoom) - TxtW + 8 * ImgZoom + ii,
+                                         5 + (NumH.Value * 16 - 16 - 8) * ImgZoom - Int(FrameData(i).Y * ImgZoom) + jj)
+                        Next
+                    Next
+                    G.DrawString(Txt, LblCal.Font, Brushes.Black, Int(FrameData(i).X * ImgZoom) - TxtW + 8 * ImgZoom,
+                                 5 + (NumH.Value * 16 - 16 - 4) * ImgZoom - Int(FrameData(i).Y * ImgZoom))
+                End If
+            Else
+                Opc = 1
+            End If
 
-                    Else
-                        If IsHitSpike(Ps(i).X, (NumH.Value * 80) - 240 + 10 - Ps(i).Y) Then
-                            G.DrawImage(SetReverseColor(CharAct(4)), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(4), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
+            If CkTrace.Checked OrElse Opc = 0 Then
+                If FrameData(i).Y = GrdY AndAlso FrameData(i).X <= GrdX - 3.1 Then
+                    If IsHitSpike(FrameData(i).X, FrameData(i).Y) Then
+                        G.DrawImage(CharAct(GetWalkFrame(i, AccFrame), 2 + Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * ImgZoom), CHW, CHH)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.Red, FrameData(i).X * ImgZoom,
+                                            (1 + NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
                         End If
-                    End If
-                    If CkHitbox.Checked Then
-                        G.DrawRectangle(Pens.White, Ps(i).X, 5 + (NumH.Value * 80) - Ps(i).Y + 20, 79, 59)
-                    End If
-                    z = 0
-                    ZL += 1
-                    If ZL <= UBound(SSS) Then
-                        If CkMove.Checked Then
-                            TxtW = GetStrW(If(CkFrame.Checked, SSS(ZL), GetCmd(SSS(ZL)))) \ 2
-                            For ii = -1 To 1
-                                For jj = -1 To 1
-                                    G.DrawString(If(CkFrame.Checked, SSS(ZL), GetCmd(SSS(ZL))), Label1.Font, Brushes.White, Ps(i).X - TxtW + 40 + ii, 5 + (NumH.Value * 80) - Ps(i).Y - 20 + jj)
-                                Next
-                            Next
-                            G.DrawString(If(CkFrame.Checked, SSS(ZL), GetCmd(SSS(ZL))), Label1.Font, Brushes.Black, Ps(i).X - TxtW + 40, 5 + (NumH.Value * 80) - Ps(i).Y - 20)
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.Red, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
+                        End If
+                    Else
+                        G.DrawImage(CharAct(GetWalkFrame(i, AccFrame), Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * 10), CHW, CHH)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(BorderColor, FrameData(i).X * ImgZoom,
+                                           (1 + NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
+                        End If
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.White, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
                     End If
                 Else
-                    z = (z + 1) Mod FRM
-                    If z = FRM - 1 Then
-                        If Ps(i).Y = 0 Then
-                            If IsHitSpike(Ps(i).X, (NumH.Value * 80) - 240 + 10 - Ps(i).Y) Then
-                                G.DrawImage(SetOpacity(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                            Else
-                                G.DrawImage(SetOpacity(CharAct(GetWalkFrame(i, SpdX(i))), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                            End If
-                        Else
-                            If IsHitSpike(Ps(i).X, (NumH.Value * 80) - 240 + 10 - Ps(i).Y) Then
-                                G.DrawImage(SetOpacity(SetReverseColor(CharAct(4)), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                            Else
-                                G.DrawImage(SetOpacity(CharAct(4), 0.5), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                            End If
-                        End If
+                    If IsHitSpike(FrameData(i).X, FrameData(i).Y) Then
+                        G.DrawImage(CharAct(4, 2 + Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * ImgZoom), CHW, CHH)
                         If CkHitbox.Checked Then
-                            G.DrawRectangle(Pens.White, Ps(i).X, 5 + (NumH.Value * 80) - Ps(i).Y + 20, 79, 59)
+                            G.DrawRectangle(Pens.Red, FrameData(i).X * ImgZoom,
+                                            (1 + NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
                         End If
-                    End If
-                End If
-
-            Next
-        Else
-            For i = 0 To UBound(S) - 1 ' Step -1
-                If Ps(i + 1).Y = 999 Then
-                    If Ps(i).Y = 0 Then
-                        If IsHitSpike(Ps(i).X, (NumH.Value * 80) - 240 + 20 - 10 - Ps(i).Y) Then
-                            G.DrawImage(SetReverseColor(CharAct(GetWalkFrame(i, SpdX(i)))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(GetWalkFrame(i, SpdX(i))), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.Red, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
-
                     Else
-                        If IsHitSpike(Ps(i).X, (NumH.Value * 80) - 240 + 20 - 10 - Ps(i).Y) Then
-                            G.DrawImage(SetReverseColor(CharAct(4)), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
-                        Else
-                            G.DrawImage(CharAct(4), Ps(i).X + OFX, OFY + 5 + (NumH.Value * 80) - Ps(i).Y, CHW, CHH)
+                        G.DrawImage(CharAct(4, Opc), Int(FrameData(i).X * ImgZoom) + OFX,
+                                    OFY + (1 + NumH.Value * 16 - 16) * ImgZoom - Int(FrameData(i).Y * 10), CHW, CHH)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(BorderColor, FrameData(i).X * ImgZoom,
+                                           (1 + NumH.Value * 16 - 16 - FrameData(i).Y) * ImgZoom + MH, 16 * ImgZoom - 1, MH2)
                         End If
-                    End If
-                    z = 0
-                    ZL += 1
-                    If ZL <= UBound(SSS) Then
-                        If CkMove.Checked Then
-                            TxtW = GetStrW(If(CkFrame.Checked, SSS(ZL), GetCmd(SSS(ZL)))) \ 2
-                            For ii = -1 To 1
-                                For jj = -1 To 1
-                                    G.DrawString(If(CkFrame.Checked, SSS(ZL), GetCmd(SSS(ZL))), Label1.Font, Brushes.White, Ps(i).X - TxtW + 40 + ii, 5 + (NumH.Value * 80) - Ps(i).Y - 20 + jj)
-                                Next
-                            Next
-                            G.DrawString(If(CkFrame.Checked, SSS(ZL), GetCmd(SSS(ZL))), Label1.Font, Brushes.Black, Ps(i).X - TxtW + 40, 5 + (NumH.Value * 80) - Ps(i).Y - 20)
+                        If CkFrame.Checked Then
+                            G.DrawString(i.ToString, LblCal.Font, Brushes.White, FrameData(i).X * ImgZoom + OFX,
+                                         OFY + (1 + NumH.Value * 16 - 12 - FrameData(i).Y) * ImgZoom)
                         End If
                     End If
                 End If
-            Next
-        End If
-
-        'PicTip.Image = B
-
-        B.Save("投屏.png", ImageFormat.Png)
-        Return 0
-    End Function
-    Private Function Cmd2Button(s As String) As String
-        Select Case Replace(GetCmd(s), "低重", "")
-            Case "加速右跳", "加速右缓冲跳"    '加速右跳
-                Return "RYB"
-            Case "加速左跳", "加速左缓冲跳"    '加速左跳
-                Return "LYB"
-            Case "加速右"    '加速右跳
-                Return "RY"
-            Case "加速左"    '加速左跳
-                Return "LY"
-            Case "右跳", "右缓冲跳"  '右跳
-                Return "RB"
-            Case "左跳", "左缓冲跳"    '左跳
-                Return "LB"
-            Case "右"    '右跳
-                Return "R"
-            Case "左"    '左跳
-                Return "L"
-            Case "滞空"    '匀速滞空跳
-                Return "B"
-            Case "落体"    '匀速落体跳
-                Return ""
-            Case "跳", "缓冲跳" '原地跳
-                Return "B"
-            Case "右跑"    '地面右跑
-                Return "RY"
-            Case "左跑"    '地面左跑
-                Return "LY"
-            Case "右走"    '地面右走
-                Return "R"
-            Case "左走"    '地面左走
-                Return "L"
-            Case "冰右跑"    '冰面右跑
-                Return "RY"
-            Case "冰右走"    '冰面右跑
-                Return "R"
-            Case "冰左跑"    '冰面右跑
-                Return "LY"
-            Case "冰左走"    '冰面右跑
-                Return "L"
-            Case Else
-                Return ""
-        End Select
-    End Function
-    Private Function GetButtonImg(s As String) As Bitmap
-        Dim B As New Bitmap(3 * 64, 64)
-        Dim g As Graphics = Graphics.FromImage(B)
-        g.FillRectangle(Brushes.Black, 0, 0, 3 * 64, 64)
-        For i As Integer = 1 To s.Length
-            g.DrawImage(Image.FromFile(Application.StartupPath & "\img\a" & Mid(s, i, 1) & ".png"), i * 64 - 64, 0)
+            End If
         Next
         Return B
     End Function
+
     Private Function GetStrW(s As String) As Integer
         Dim B As New Bitmap(300, 100)
         Dim G As Graphics = Graphics.FromImage(B), SZ As SizeF
-        SZ = G.MeasureString(s, Label1.Font)
+        SZ = G.MeasureString(s, LblCal.Font)
         Return SZ.Width
     End Function
-    Sub SearchMoveSpike()
+
+    Sub SearchMoveSpikeM(TCmd As String, RN As Single, ST As Single)
+        '多线程搜索，未测试
+        LBox.Items.Clear()
+        FileNum = 1
+        '线程数组
+        Dim threads() As Thread
+        Dim i, j, k, CU, CL As Integer
+        Dim XRange(5) As Single
+        Dim Cmd() = Txt2Cmd(TCmd, CU).Split(" ")
+        Dim RCmd() As String
+        CL = 0
+        CU = 0
+        For i = 0 To Cmd.Length - 1
+            GetNum(Cmd(i), CL, CU)
+            If CL <> CU Then
+                Exit For
+            End If
+        Next
+        If CL = 0 AndAlso CU = 0 Then
+            Exit Sub
+        End If
+        '线程分配
+        ReDim threads(CU - CL)
+        ReDim RCmd(CU - CL)
+        For k = CL To CU
+            RCmd(k - CL) = ""
+            For j = 0 To Cmd.Length - 1
+                If j = i Then
+                    RCmd(k - CL) &= GetCmd(Cmd(j)) & k.ToString & "-" & k.ToString
+                Else
+                    RCmd(k - CL) &= Cmd(j)
+                End If
+                If j < Cmd.Length - 1 Then
+                    RCmd(k - CL) &= " "
+                End If
+            Next
+        Next
+        ' 创建并启动5个线程
+        For k = CL To CU
+            threads(k - CL) = New Thread(Sub()
+                                             SearchMoveSpike(RCmd(k - CL), RN, ST)
+                                             Debug.Print(DateTime.Now & "线程" & Environment.CurrentManagedThreadId.ToString & "启动")
+                                             'LBox.Items.Add(DateTime.Now & "线程" & (k - CL).ToString & "启动")
+                                             '' 在这里，number是线程索引，可以用作线程任务的参数
+                                             'Dim number As Integer = i
+                                             '' 执行计算任务
+                                             'Dim result As Integer = i
+                                             '' 输出结果
+                                             'Debug.Print("Thread {0}: {1} squared is {2}", Thread.CurrentThread.ManagedThreadId, number, result)
+                                         End Sub)
+            threads(k - CL).Start()
+        Next
+
+        ' 等待所有线程完成
+        For k = CL To CU
+            threads(k - CL).Join()
+        Next
+        Debug.Print(DateTime.Now & "线程已完成")
+        'LBox.Items.Add(DateTime.Now & "All threads have completed execution.")
+    End Sub
+    Dim FileNum As Integer = 1
+    Sub SearchMoveSpike(Cmds As String, RN As Single, ST As Single)
+        '碰撞判定搜索
+        Dim FNum = FileNum
+        FileNum += 1
+        FileOpen(FNum, Application.StartupPath & "\output\[" & DateString.Replace("/", "") & "-" & TimeString.Replace(":", "") & "]" & Cmds & ".TXT", OpenMode.Output)
+
         Dim X, X2, Y, Y2, SPD, SPD2, RX, RY, RS As Single
         Dim SPY As Single, IsJump As Boolean
-        T2.Text = T2.Text.Replace(vbTab, " ")
 
         X2 = Val(TX2.Text)
         Y2 = Val(TY2.Text)
@@ -669,715 +655,269 @@ Partial Class Form1
         RY = Val(TY3.Text)
         RS = Val(TS3.Text)
 
-        Label1.Text = DateTime.Now & " 开始搜索操作"
-        FileOpen(1, Application.StartupPath & "\" & T2.Text & ".TXT", OpenMode.Output)
+        HitBlk = CkBlk.Checked
+        HitBlkLoc = Val(TB.Text)
 
-        Dim I, J, K As Long
-        Dim S() As String, RESULT, RE As String
+        LblCal.Text = DateTime.Now & " 开始搜索操作"
+
+        Dim i, j, k As Long, m As Single
+        Dim S(), CmdT(), Re As String
         Dim C(), UC(), LC() As Integer
-        S = T2.Text.Trim.Split(" ")
-        ReDim C(S.GetUpperBound(0)), UC(S.GetUpperBound(0)), LC(S.GetUpperBound(0))
-        Dim PR, PN As Integer
-        PR = 1
-        PN = 0
-        For I = 0 To S.GetUpperBound(0)
-            GetNum(S(I), LC(I), UC(I))
-            C(I) = LC(I)
-            If UC(I) > 0 Then
-                PR *= UC(I) - LC(I) + 1
-            End If
+
+        S = Cmds.Split(" ")
+        ReDim C(S.Length - 1), UC(S.Length - 1), LC(S.Length - 1)
+        ReDim CmdT(S.Length - 1)
+        For i = 0 To S.Length - 1
+            CmdT(i) = GetCmd(S(i))
+            GetNum(S(i), LC(i), UC(i))
+            C(i) = LC(i)
         Next
-        MaterialProgressBar1.Maximum = PR
+
+        PBar.Maximum = UC(0)
         T1.Text = ""
-        J = 0
-        Dim CSpike As Boolean, TFrame As Integer
-        Dim R2(), R3() As String
-        Do
+        RefBtn(Cmds)
+        k = 0
+        Dim CSpike As Boolean
+        Dim MaxF As Integer = 0, TFrame As Integer, Temp As Integer
+        Dim NowF As Integer = 0
+        For m = Val(TX1.Text) To Val(TX1.Text) + RN Step ST
             Application.DoEvents()
-            X = Val(TX1.Text)
-            SPD = Val(TS1.Text)
-            DSpd = Val(TD.Text)
-            Y = Val(TY1.Text)
-            SPY = 0
-            IsJump = False
-            MaterialProgressBar1.Value = PN
-            'Me.Text = PN.ToString
-            WSpd = 0
-            WFrame = 0
-            CSpike = False
-            RE = ""
-            TFrame = 0
-            For I = 0 To S.GetUpperBound(0)
-                TFrame += C(I)
-                Select Case GetCmd(S(I))
-                    Case "左风站立"
-                        RE = WAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "风右跑跳"    '加速右跳
-                        RE = WJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "风左跑跳"    '加速左跳
-                        RE = WJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "风右跳"    '右跳
-                        RE = WJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "风左跳"    '左跳
-                        RE = WJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "加速右跳"    '加速右跳
-                        RE = MJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速左跳"    '加速左跳
-                        RE = MJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速右"    '加速右跳
-                        RE = MAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "加速左"    '加速左跳
-                        RE = MAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "右跳"    '右跳
-                        RE = MJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "左跳"    '左跳
-                        RE = MJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "右"    '右跳
-                        RE = MAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "左"    '左跳
-                        RE = MAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "左反墙"
-                        RE = MWallJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "右反墙"
-                        RE = MWallJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "加速右旋转"    '加速右跳
-                        RE = SpinJump(X, SPD, True, True, 0, Y, SPY, IsJump)
-                    Case "加速左旋转"    '加速左跳
-                        RE = SpinJump(X, SPD, False, True, 0, Y, SPY, IsJump)
-                    Case "右旋转"    '右跳
-                        RE = SpinJump(X, SPD, True, False, 0, Y, SPY, IsJump)
-                    Case "左旋转"    '左跳
-                        RE = SpinJump(X, SPD, False, False, 0, Y, SPY, IsJump)
-                    Case "旋转"    '匀速滞空跳
-                        RE = SpinAir(X, SPD, 0, Y, SPY, IsJump)
+            LblCal.Text = "搜索解法 " & Format(m, "0.000") & " → 帧" & MaxF.ToString & " [" & k.ToString & "] " & Format(C(0) / UC(0), "0.00%")
 
-                    Case "加速右旋转跳"    '加速右跳
-                        RE = MSpinJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速左旋转跳"    '加速左跳
-                        RE = MSpinJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "右旋转跳"    '右跳
-                        RE = MSpinJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "左旋转跳"    '左跳
-                        RE = MSpinJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
+            For i = 0 To S.Length - 1
+                C(i) = LC(i)
+                NowF += C(i)
+            Next
 
-                    Case "滞空"    '匀速滞空跳
-                        RE = MAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "落体"    '匀速落体跳
-                        RE = MAir(X, SPD, C(I), Y, SPY, IsJump, 0)
-                    Case "落体站"    '匀速落体跳
-                        RE = MAir(X, SPD, C(I), Y, SPY, IsJump, 0)
-                    Case "落体正"    '匀速落体跳
-                        RE = MAir(X, SPD, C(I), Y, SPY, IsJump, 1)
-                    Case "落体反"    '匀速落体跳
-                        RE = MAir(X, SPD, C(I), Y, SPY, IsJump, -1)
-
-                    Case "跳" '原地跳
-                        RE = Jump(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "缓冲跳"
-                        RE = BJump(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "弹簧跳" '弹簧跳
-                        RE = TJump(X, SPD, Y, SPY, IsJump)
-                    Case "低重滞空"    '低重力匀速跳
-                        RE = LAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重落体" '低重力落体
-                        RE = LAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重跳"    '低重力匀速跳
-                        RE = LAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重缓冲跳"    '低重力匀速跳
-                        RE = LBAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "风地右跑"    '风地面右跑
-                        RE = WRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "风地左跑"    '风地面左跑
-                        RE = WRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "风地右走"    '风地面右走
-                        RE = WRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "风地左走"    '风地面左走
-                        RE = WRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "右跑"    '地面右跑
-                        RE = MRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "左跑"    '地面左跑
-                        RE = MRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "右走"    '地面右走
-                        RE = MRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "左走"    '地面左走
-                        RE = MRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "右陡坡右跑"    '地面右跑
-                        RE = MDSlopeRun(X, SPD, True, True, C(I), Y, SPY, True)
-                    Case "右陡坡左跑"    '地面左跑
-                        RE = MDSlopeRun(X, SPD, False, True, C(I), Y, SPY, True)
-                    Case "右陡坡右走"    '地面右走
-                        RE = MDSlopeRun(X, SPD, True, False, C(I), Y, SPY, True)
-                    Case "右陡坡左走"    '地面左走
-                        RE = MDSlopeRun(X, SPD, False, False, C(I), Y, SPY, True)
-
-                    Case "左陡坡右跑"    '地面右跑
-                        RE = MDSlopeRun(X, SPD, True, True, C(I), Y, SPY, False)
-                    Case "左陡坡左跑"    '地面左跑
-                        RE = MDSlopeRun(X, SPD, False, True, C(I), Y, SPY, False)
-                    Case "左陡坡右走"    '地面右走
-                        RE = MDSlopeRun(X, SPD, True, False, C(I), Y, SPY, False)
-                    Case "左陡坡左走"    '地面左走
-                        RE = MDSlopeRun(X, SPD, False, False, C(I), Y, SPY, False)
-
-                    Case "右缓坡右跑"    '地面右跑
-                        RE = MHSlopeRun(X, SPD, True, True, C(I), Y, SPY, True)
-                    Case "右缓坡左跑"    '地面左跑
-                        RE = MHSlopeRun(X, SPD, False, True, C(I), Y, SPY, True)
-                    Case "右缓坡右走"    '地面右走
-                        RE = MHSlopeRun(X, SPD, True, False, C(I), Y, SPY, True)
-                    Case "右缓坡左走"    '地面左走
-                        RE = MHSlopeRun(X, SPD, False, False, C(I), Y, SPY, True)
-
-                    Case "左缓坡右跑"    '地面右跑
-                        RE = MHSlopeRun(X, SPD, True, True, C(I), Y, SPY, False)
-                    Case "左缓坡左跑"    '地面左跑
-                        RE = MHSlopeRun(X, SPD, False, True, C(I), Y, SPY, False)
-                    Case "左缓坡右走"    '地面右走
-                        RE = MHSlopeRun(X, SPD, True, False, C(I), Y, SPY, False)
-                    Case "左缓坡左走"    '地面左走
-                        RE = MHSlopeRun(X, SPD, False, False, C(I), Y, SPY, False)
-
-                    Case "岩浆右走"    '地面右走
-                        RE = MFireRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "岩浆左走"    '地面左走
-                        RE = MFireRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "岩浆站立"    '地面站立
-                        RE = MFireDuck(X, SPD, C(I), Y, SPY)
-                    Case "岩浆站停"    '地面站立
-                        RE = MFireDuck(X, SPD, 999, Y, SPY)
-                    '鞋走路 USA大跳
-
-                    Case "站立"    '地面站立
-                        RE = MDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "正蹲"    '地面正蹲
-                        RE = MDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "反蹲"    '地面反蹲
-                        RE = MDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "站停"    '地面站立
-                        RE = MDuck(X, SPD, True, True, 999, Y, SPY, IsJump)
-                    Case "正停"    '地面正蹲
-                        RE = MDuck(X, SPD, False, True, 999, Y, SPY, IsJump)
-                    Case "反停"    '地面反蹲
-                        RE = MDuck(X, SPD, False, False, 999, Y, SPY, IsJump)
-                    Case "冰站立"    '地面站立
-                        RE = IDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "冰正蹲"    '地面正蹲
-                        RE = IDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "冰反蹲"    '地面反蹲
-                        RE = IDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "低重右跳"    '低重力右跳
-                        RE = LJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "低重左跳"    '低重力左跳
-                        RE = LJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "低重右"    '低重力右跳
-                        RE = LAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "低重左"    '低重力左跳
-                        RE = LAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "低重加速右跳"    '低重力右跳
-                        RE = LJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "低重加速左跳"    '低重力左跳
-                        RE = LJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "低重加速右"    '低重力右跳
-                        RE = LAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "低重加速左"    '低重力左跳
-                        RE = LAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "坐莲" '坐莲
-                        RE = ZAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "滞空坐莲" '坐莲
-                        RE = ZAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重坐莲" '坐莲
-                        RE = LZAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重滞空坐莲" '坐莲
-                        RE = LZAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "冰右跑"    '冰面右跑
-                        RE = IRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "冰右走"    '冰面右跑
-                        RE = IRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "冰左跑"    '冰面右跑
-                        RE = IRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "冰左走"    '冰面右跑
-                        RE = IRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "加速右缓冲跳"    '加速右跳
-                        RE = MJump(X, SPD, True, True, C(I), Y, SPY, IsJump, True)
-                    Case "加速左缓冲跳"    '加速左跳
-                        RE = MJump(X, SPD, False, True, C(I), Y, SPY, IsJump, True)
-                    Case "右缓冲跳"    '右跳
-                        RE = MJump(X, SPD, True, False, C(I), Y, SPY, IsJump, True)
-                    Case "左缓冲跳"    '左跳
-                        RE = MJump(X, SPD, False, False, C(I), Y, SPY, IsJump, True)
-                    Case "低重加速右缓冲跳"    '低重力右跳
-                        RE = LJump(X, SPD, True, True, C(I), Y, SPY, IsJump, True)
-                    Case "低重加速左缓冲跳"    '低重力左跳
-                        RE = LJump(X, SPD, False, True, C(I), Y, SPY, IsJump, True)
-                    Case "低重右缓冲跳"    '低重力右跳
-                        RE = LJump(X, SPD, True, False, C(I), Y, SPY, IsJump, True)
-                    Case "低重左缓冲跳"    '低重力左跳
-                        RE = LJump(X, SPD, False, False, C(I), Y, SPY, IsJump, True)
-
-                    Case "水右跳"    '右跳
-                        RE = WtJump(X, SPD, True, True, C(I), Y, SPY, True, IsJump)
-                    Case "水左跳"    '左跳
-                        RE = WtJump(X, SPD, False, True, C(I), Y, SPY, True, IsJump)
-                    Case "水右"    '右
-                        RE = WtJump(X, SPD, True, True, C(I), Y, SPY, False, IsJump)
-                    Case "水左"    '左
-                        RE = WtJump(X, SPD, False, True, C(I), Y, SPY, False, IsJump)
-                    Case "水右走"    '地面右走
-                        RE = WtRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "水左走"    '地面左走
-                        RE = WtRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "水跳"
-                        RE = WtAir(X, SPD, False, True, C(I), Y, SPY, True, IsJump)
-                    Case "水落"
-                        RE = WtAir(X, SPD, False, True, C(I), Y, SPY, False, IsJump)
-                    Case "水站"    '地面站立
-                        RE = WtDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "水冰右走"    '地面右走
-                        RE = WtIceRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "水冰左走"    '地面左走
-                        RE = WtIceRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "水冰站"    '地面站立
-                        RE = WtIceDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-
-                    Case "无敌加速右跳"    '加速右跳
-                        RE = MSJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "无敌加速左跳"    '加速左跳
-                        RE = MSJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "无敌加速右"    '加速右跳
-                        RE = MSAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌加速左"    '加速左跳
-                        RE = MSAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌右跳"    '右跳
-                        RE = MSJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "无敌左跳"    '左跳
-                        RE = MSJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "无敌右"    '右跳
-                        RE = MSAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "无敌左"    '左跳
-                        RE = MSAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌右跑"    '地面右跑
-                        RE = MSRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌左跑"    '地面左跑
-                        RE = MSRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌右走"    '地面右走
-                        RE = MSRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "无敌左走"    '地面左走
-                        RE = MSRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌站立"    '地面站立
-                        RE = MSDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌正蹲"    '地面正蹲
-                        RE = MSDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌反蹲"    '地面反蹲
-                        RE = MSDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌站停"    '地面站立
-                        RE = MSDuck(X, SPD, True, True, 999, Y, SPY, IsJump)
-                    Case "无敌正停"    '地面正蹲
-                        RE = MSDuck(X, SPD, False, True, 999, Y, SPY, IsJump)
-                    Case "无敌反停"    '地面反蹲
-                        RE = MSDuck(X, SPD, False, False, 999, Y, SPY, IsJump)
-                End Select
-                '检查碰撞
-                R2 = RE.Replace(vbCrLf, "|").Split("|")
-                For K = 0 To R2.Length - 1
-                    R3 = R2(K).Split(vbTab)
-                    If R3.Length > 1 Then
-                        If IsHitSpike(Val(R3(0)), Val(R3(1))) Then
-                            CSpike = True
-                            Exit For
-                        End If
-                    End If
-                Next
-                If CSpike Then
+            Do
+                Application.DoEvents()
+                If GetAsyncKeyState(27) Then
                     Exit For
                 End If
-            Next
+                If NowF >= MaxF Then '搜索解法
+                    X = m
+                    SPD = Val(TS1.Text)
+                    DSpd = Val(TD.Text)
+                    Y = Val(TY1.Text)
+                    SPY = 0
+                    IsJump = False
+                    PBar.Value = C(0)
+                    WSpd = 0
+                    WFrame = 0
+                    CSpike = False
 
-            If Not CSpike Then
-                RESULT = ""
-                For I = 0 To S.GetUpperBound(0)
-                    RESULT += GetCmd(S(I)) & C(I).ToString & vbTab
-                Next
-                RESULT += "'" & TFrame.ToString & vbTab & Sng2Hex(X) & vbTab & "'" & Sng2Hex(SPD) & vbTab & CDec(X).ToString & vbTab &
-                    CDec(SPD).ToString & vbTab & CDec(Y).ToString & vbTab & CDec(SPY).ToString & vbCrLf
-                Print(1, RESULT)
-                J += 1
-            End If
+                    Temp = 0
+                    For i = 0 To S.Length - 1
+                        Temp += C(i)
+                    Next
 
-            C(0) = C(0) + 1
-            For I = 0 To S.GetUpperBound(0) - 1
-                If C(I) > UC(I) Then
-                    C(I) = LC(I)
-                    C(I + 1) += 1
+                    FrameLoc = 1
+                    TFrame = 0
+
+                    For i = 0 To S.Length - 1
+                        TFrame += C(i)
+                        MarioMove(CmdT(i), X, SPD, C(i), Y, SPY, IsJump)
+                        '检查碰撞
+                        For j = 1 To FrameLoc - 1
+                            If IsHitSpike(FrameData(j).X, FrameData(j).Y) Then
+                                CSpike = True
+                                Exit For
+                            End If
+                        Next
+                        If CSpike Then
+                            Exit For
+                        End If
+                    Next
+
+                    If Not CSpike Then
+                        If TFrame >= MaxF Then
+                            If TFrame > MaxF Then
+                                LBox.Items.Clear()
+                                LblState.Text = "[" & TFrame.ToString & "]"
+                            End If
+                            MaxF = TFrame
+                            Re = ""
+                            For i = 0 To S.GetUpperBound(0)
+                                Re &= CmdT(i) & C(i).ToString & " "
+                                CmdBtn(i).Label2.Text = C(i).ToString
+                            Next
+
+                            LBox.Items.Add(Re)
+                            TX1.Text = m.ToString
+                            'TestJump(Re, False)
+                            Draw2(Re, False)
+
+                            Re += "'" & TFrame.ToString & vbTab & Sng2Hex(X) & vbTab & "'" & Sng2Hex(SPD) & vbTab & CDec(X).ToString & vbTab &
+                            CDec(SPD).ToString & vbTab & CDec(Y).ToString & vbTab & CDec(SPY).ToString & vbCrLf
+                            Print(FNum, m.ToString & vbTab & Re.Replace(" ", vbTab))
+                        End If
+                        k += 1
+                        LblCal.Text = "搜索解法 " & Format(m, "0.000") & " → 帧" & MaxF.ToString & " [" & k.ToString & "] " & Format(C(0) / UC(0), "0.00%")
+                        '搜索下一解法
+                        C(S.Length - 1) += 1
+                        NowF += 1
+                        For i = S.Length - 1 To 1 Step -1
+                            If C(i) > UC(i) Then
+                                NowF = NowF - C(i) + LC(i) + 1
+                                C(i) = LC(i)
+                                C(i - 1) += 1
+                            End If
+                        Next
+                    Else
+                        '已碰撞，跳过后续解法
+                        For i = S.Length - 1 To 1 Step -1
+                            If C(i) > 0 Then
+                                For j = i To S.Length - 1
+                                    NowF = NowF - C(j) + LC(j)
+                                    C(j) = LC(j)
+                                Next
+                                C(i - 1) += 1
+                                NowF += 1
+                                For j = S.Length - 1 To 1 Step -1
+                                    If C(j) > UC(j) Then
+                                        NowF = NowF - C(j) + LC(j) + 1
+                                        C(j) = LC(j)
+                                        C(j - 1) += 1
+                                    End If
+                                Next
+                                LblCal.Text = "搜索解法 " & Format(m, "0.000") & " → 帧" & MaxF.ToString & " [" & k.ToString & "] " & Format(C(0) / UC(0), "0.00%")
+                                Exit For
+                            End If
+                        Next
+                    End If
+
+                Else '跳过解法
+                    '搜索下一解法
+                    C(S.Length - 1) += 1
+                    NowF += 1
+                    For i = S.Length - 1 To 1 Step -1
+                        If C(i) > UC(i) Then
+                            NowF = NowF - C(i) + LC(i) + 1
+                            C(i) = LC(i)
+                            C(i - 1) += 1
+                        End If
+                    Next
                 End If
-            Next
-            PN += 1 '= C(UC.GetUpperBound(0))
-        Loop Until C(UC.GetUpperBound(0)) > UC(UC.GetUpperBound(0))
-        MaterialProgressBar1.Value = MaterialProgressBar1.Maximum
-        Label1.Text = DateTime.Now & " 找到解法" & J.ToString & "个"
-        FileClose(1)
+            Loop Until C(0) > UC(0)
+        Next
+
+        PBar.Value = PBar.Maximum
+        LblCal.Text = DateTime.Now & " 找到解法" & k.ToString & "个"
+        FileClose(FNum)
+
+        'Re = ""
+        'For i = 0 To S.GetUpperBound(0)
+        '    Re &= CmdT(i) & C(i).ToString & " "
+        'Next
+        'T1.Text = Re
     End Sub
     Sub SearchMove()
-        Dim X, X2, Y, Y2, SPD, SPD2, RX, RY, RS As Single
-        Dim SPY As Single, IsJump As Boolean
+        '未更新
+        Dim X, X2, Y, Y2, SPD, SPD2, RX, RY, RS, RSY As Single
+        Dim SPY, SPY2 As Single, IsJump As Boolean
         T2.Text = T2.Text.Replace(vbTab, " ")
-
+        RefBtn(T2.Text)
         X2 = Val(TX2.Text)
         Y2 = Val(TY2.Text)
         SPD2 = Val(TS2.Text)
+        SPY2 = Val(TSY2.Text)
 
         RX = Val(TX3.Text)
         RY = Val(TY3.Text)
         RS = Val(TS3.Text)
+        RSY = Val(TSY3.Text)
 
-        Label1.Text = DateTime.Now & " 开始搜索操作"
-        FileOpen(1, Application.StartupPath & "\" & T2.Text & ".TXT", OpenMode.Output)
+        LblCal.Text = DateTime.Now & " 开始搜索操作"
+        FileOpen(1, Application.StartupPath & "\output\[" & DateString.Replace("/", "") & "-" & TimeString.Replace(":", "") & "]" & T2.Text & ".TXT", OpenMode.Output)
 
-        Dim I, J As Long
-        Dim S() As String, RESULT As String
+        Dim i, j As Long
+        Dim S(), CmdT() As String, RESULT As String
         Dim C(), UC(), LC() As Integer
-        S = T2.Text.Trim.Split(" ")
-        ReDim C(S.GetUpperBound(0)), UC(S.GetUpperBound(0)), LC(S.GetUpperBound(0))
+        S = T2.Text.Split(" ")
+        ReDim C(S.Length - 1), UC(S.Length - 1), LC(S.Length - 1)
+        ReDim CmdT(S.Length - 1)
         Dim PR, PN As Integer
         PR = 1
         PN = 0
-        For I = 0 To S.GetUpperBound(0)
-            GetNum(S(I), LC(I), UC(I))
-            C(I) = LC(I)
-            If UC(I) > 0 Then
-                PR *= UC(I) - LC(I) + 1
-            End If
+        For i = 0 To S.Length - 1
+            CmdT(i) = GetCmd(S(i))
+            GetNum(S(i), LC(i), UC(i))
+            C(i) = LC(i)
         Next
-        MaterialProgressBar1.Maximum = PR
+        'PBar.Maximum = PR
         T1.Text = ""
-        J = 0
+        j = 0
         Do
             Application.DoEvents()
+            If GetAsyncKeyState(27) Then
+                Exit Do
+            End If
             X = Val(TX1.Text)
             SPD = Val(TS1.Text)
             DSpd = Val(TD.Text)
             Y = Val(TY1.Text)
-            SPY = 0
+            SPY = Val(TSY1.Text)
+
             IsJump = False
-            MaterialProgressBar1.Value = PN
-            'Me.Text = PN.ToString
+            'PBar.Value = PN
+            LblCal.Text = "搜索解法 → [" & j.ToString & "]"
             WSpd = 0
             WFrame = 0
-            For I = 0 To S.GetUpperBound(0)
-                Select Case GetCmd(S(I)) 'Strings.Left(S(I), 4)
-                    Case "左风站立"
-                        WAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "风右跑跳"    '加速右跳
-                        WJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "风左跑跳"    '加速左跳
-                        WJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "风右跳"    '右跳
-                        WJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "风左跳"    '左跳
-                        WJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "加速右跳"    '加速右跳
-                        MJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速左跳"    '加速左跳
-                        MJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速右"    '加速右跳
-                        MAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "加速左"    '加速左跳
-                        MAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "右跳"    '右跳
-                        MJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "左跳"    '左跳
-                        MJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "右"    '右跳
-                        MAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "左"    '左跳
-                        MAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "左反墙"
-                        MWallJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "右反墙"
-                        MWallJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "加速右旋转"    '加速右跳
-                        SpinJump(X, SPD, True, True, 0, Y, SPY, IsJump)
-                    Case "加速左旋转"    '加速左跳
-                        SpinJump(X, SPD, False, True, 0, Y, SPY, IsJump)
-                    Case "右旋转"    '右跳
-                        SpinJump(X, SPD, True, False, 0, Y, SPY, IsJump)
-                    Case "左旋转"    '左跳
-                        SpinJump(X, SPD, False, False, 0, Y, SPY, IsJump)
-                    Case "旋转"    '匀速滞空跳
-                        SpinAir(X, SPD, 0, Y, SPY, IsJump)
-
-                    Case "加速右旋转跳"    '加速右跳
-                        MSpinJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速左旋转跳"    '加速左跳
-                        MSpinJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "右旋转跳"    '右跳
-                        MSpinJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "左旋转跳"    '左跳
-                        MSpinJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-
-                    Case "滞空"    '匀速滞空跳
-                        MAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "落体"    '匀速落体跳
-                        MAir(X, SPD, C(I), Y, SPY, IsJump, 0)
-                    Case "落体站"    '匀速落体跳
-                        MAir(X, SPD, C(I), Y, SPY, IsJump, 0)
-                    Case "落体正"    '匀速落体跳
-                        MAir(X, SPD, C(I), Y, SPY, IsJump, 1)
-                    Case "落体反"    '匀速落体跳
-                        MAir(X, SPD, C(I), Y, SPY, IsJump, -1)
-
-                    Case "跳" '原地跳
-                        Jump(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "缓冲跳"
-                        BJump(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "弹簧跳" '弹簧跳
-                        TJump(X, SPD, Y, SPY, IsJump)
-                    Case "低重滞空"    '低重力匀速跳
-                        LAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重落体" '低重力落体
-                        LAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重跳"    '低重力匀速跳
-                        LAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重缓冲跳"    '低重力匀速跳
-                        LBAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "风地右跑"    '风地面右跑
-                        WRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "风地左跑"    '风地面左跑
-                        WRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "风地右走"    '风地面右走
-                        WRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "风地左走"    '风地面左走
-                        WRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "右跑"    '地面右跑
-                        MRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "左跑"    '地面左跑
-                        MRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "右走"    '地面右走
-                        MRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "左走"    '地面左走
-                        MRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "右陡坡右跑"    '地面右跑
-                        MDSlopeRun(X, SPD, True, True, C(I), Y, SPY, True)
-                    Case "右陡坡左跑"    '地面左跑
-                        MDSlopeRun(X, SPD, False, True, C(I), Y, SPY, True)
-                    Case "右陡坡右走"    '地面右走
-                        MDSlopeRun(X, SPD, True, False, C(I), Y, SPY, True)
-                    Case "右陡坡左走"    '地面左走
-                        MDSlopeRun(X, SPD, False, False, C(I), Y, SPY, True)
-
-                    Case "左陡坡右跑"    '地面右跑
-                        MDSlopeRun(X, SPD, True, True, C(I), Y, SPY, False)
-                    Case "左陡坡左跑"    '地面左跑
-                        MDSlopeRun(X, SPD, False, True, C(I), Y, SPY, False)
-                    Case "左陡坡右走"    '地面右走
-                        MDSlopeRun(X, SPD, True, False, C(I), Y, SPY, False)
-                    Case "左陡坡左走"    '地面左走
-                        MDSlopeRun(X, SPD, False, False, C(I), Y, SPY, False)
-
-                    Case "右缓坡右跑"    '地面右跑
-                        MHSlopeRun(X, SPD, True, True, C(I), Y, SPY, True)
-                    Case "右缓坡左跑"    '地面左跑
-                        MHSlopeRun(X, SPD, False, True, C(I), Y, SPY, True)
-                    Case "右缓坡右走"    '地面右走
-                        MHSlopeRun(X, SPD, True, False, C(I), Y, SPY, True)
-                    Case "右缓坡左走"    '地面左走
-                        MHSlopeRun(X, SPD, False, False, C(I), Y, SPY, True)
-
-                    Case "左缓坡右跑"    '地面右跑
-                        MHSlopeRun(X, SPD, True, True, C(I), Y, SPY, False)
-                    Case "左缓坡左跑"    '地面左跑
-                        MHSlopeRun(X, SPD, False, True, C(I), Y, SPY, False)
-                    Case "左缓坡右走"    '地面右走
-                        MHSlopeRun(X, SPD, True, False, C(I), Y, SPY, False)
-                    Case "左缓坡左走"    '地面左走
-                        MHSlopeRun(X, SPD, False, False, C(I), Y, SPY, False)
-
-                    Case "岩浆右走"    '地面右走
-                        MFireRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "岩浆左走"    '地面左走
-                        MFireRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "岩浆站立"    '地面站立
-                        MFireDuck(X, SPD, C(I), Y, SPY)
-                    Case "岩浆站停"    '地面站立
-                        MFireDuck(X, SPD, 999, Y, SPY)
-                    '鞋走路 USA大跳
-
-                    Case "站立"    '地面站立
-                        MDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "正蹲"    '地面正蹲
-                        MDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "反蹲"    '地面反蹲
-                        MDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "站停"    '地面站立
-                        MDuck(X, SPD, True, True, 999, Y, SPY, IsJump)
-                    Case "正停"    '地面正蹲
-                        MDuck(X, SPD, False, True, 999, Y, SPY, IsJump)
-                    Case "反停"    '地面反蹲
-                        MDuck(X, SPD, False, False, 999, Y, SPY, IsJump)
-                    Case "冰站立"    '地面站立
-                        IDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "冰正蹲"    '地面正蹲
-                        IDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "冰反蹲"    '地面反蹲
-                        IDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "低重右跳"    '低重力右跳
-                        LJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "低重左跳"    '低重力左跳
-                        LJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "低重右"    '低重力右跳
-                        LAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "低重左"    '低重力左跳
-                        LAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "低重加速右跳"    '低重力右跳
-                        LJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "低重加速左跳"    '低重力左跳
-                        LJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "低重加速右"    '低重力右跳
-                        LAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "低重加速左"    '低重力左跳
-                        LAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "坐莲" '坐莲
-                        ZAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "滞空坐莲" '坐莲
-                        ZAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重坐莲" '坐莲
-                        LZAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重滞空坐莲" '坐莲
-                        LZAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "冰右跑"    '冰面右跑
-                        IRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "冰右走"    '冰面右跑
-                        IRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "冰左跑"    '冰面右跑
-                        IRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "冰左走"    '冰面右跑
-                        IRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "加速右缓冲跳"    '加速右跳
-                        MJump(X, SPD, True, True, C(I), Y, SPY, IsJump, True)
-                    Case "加速左缓冲跳"    '加速左跳
-                        MJump(X, SPD, False, True, C(I), Y, SPY, IsJump, True)
-                    Case "右缓冲跳"    '右跳
-                        MJump(X, SPD, True, False, C(I), Y, SPY, IsJump, True)
-                    Case "左缓冲跳"    '左跳
-                        MJump(X, SPD, False, False, C(I), Y, SPY, IsJump, True)
-                    Case "低重加速右缓冲跳"    '低重力右跳
-                        LJump(X, SPD, True, True, C(I), Y, SPY, IsJump, True)
-                    Case "低重加速左缓冲跳"    '低重力左跳
-                        LJump(X, SPD, False, True, C(I), Y, SPY, IsJump, True)
-                    Case "低重右缓冲跳"    '低重力右跳
-                        LJump(X, SPD, True, False, C(I), Y, SPY, IsJump, True)
-                    Case "低重左缓冲跳"    '低重力左跳
-                        LJump(X, SPD, False, False, C(I), Y, SPY, IsJump, True)
-
-                    Case "水右跳"    '右跳
-                        WtJump(X, SPD, True, True, C(I), Y, SPY, True, IsJump)
-                    Case "水左跳"    '左跳
-                        WtJump(X, SPD, False, True, C(I), Y, SPY, True, IsJump)
-                    Case "水右"    '右
-                        WtJump(X, SPD, True, True, C(I), Y, SPY, False, IsJump)
-                    Case "水左"    '左
-                        WtJump(X, SPD, False, True, C(I), Y, SPY, False, IsJump)
-                    Case "水右走"    '地面右走
-                        WtRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "水左走"    '地面左走
-                        WtRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "水跳"
-                        WtAir(X, SPD, False, True, C(I), Y, SPY, True, IsJump)
-                    Case "水落"
-                        WtAir(X, SPD, False, True, C(I), Y, SPY, False, IsJump)
-                    Case "水站"    '地面站立
-                        WtDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "水冰右走"    '地面右走
-                        WtIceRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "水冰左走"    '地面左走
-                        WtIceRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "水冰站"    '地面站立
-                        WtIceDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-
-                    Case "无敌加速右跳"    '加速右跳
-                        MSJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "无敌加速左跳"    '加速左跳
-                        MSJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "无敌加速右"    '加速右跳
-                        MSAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌加速左"    '加速左跳
-                        MSAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌右跳"    '右跳
-                        MSJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "无敌左跳"    '左跳
-                        MSJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "无敌右"    '右跳
-                        MSAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "无敌左"    '左跳
-                        MSAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌右跑"    '地面右跑
-                        MSRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌左跑"    '地面左跑
-                        MSRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌右走"    '地面右走
-                        MSRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "无敌左走"    '地面左走
-                        MSRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌站立"    '地面站立
-                        MSDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌正蹲"    '地面正蹲
-                        MSDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌反蹲"    '地面反蹲
-                        MSDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌站停"    '地面站立
-                        MSDuck(X, SPD, True, True, 999, Y, SPY, IsJump)
-                    Case "无敌正停"    '地面正蹲
-                        MSDuck(X, SPD, False, True, 999, Y, SPY, IsJump)
-                    Case "无敌反停"    '地面反蹲
-                        MSDuck(X, SPD, False, False, 999, Y, SPY, IsJump)
-
-                End Select
+            FrameLoc = 1
+            For i = 0 To S.Length - 1
+                MarioMove(GetCmd(S(i)), X, SPD, C(i), Y, SPY, IsJump)
             Next
 
             If Not TS4.Checked OrElse Math.Abs(SPD - SPD2) <= RS Then
                 If Not TX4.Checked OrElse Math.Abs(X - X2) <= RX Then
                     If Not TY4.Checked OrElse Math.Abs(Y - Y2) <= RY Then
-                        RESULT = ""
-                        For I = 0 To S.GetUpperBound(0)
-                            RESULT += GetCmd(S(I)) & C(I).ToString & vbTab
-                        Next
-                        RESULT += "'" & Sng2Hex(X) & vbTab & "'" & Sng2Hex(SPD) & vbTab & CDec(X).ToString & vbTab &
-                            CDec(SPD).ToString & vbTab & CDec(Y).ToString & vbTab & CDec(SPY).ToString & vbCrLf
-                        Print(1, RESULT)
-                        J += 1
+                        If Not TSY4.Checked OrElse Math.Abs(SPY - SPY2) <= RSY Then
+                            RESULT = ""
+                            For i = 0 To S.Length - 1
+                                RESULT += CmdT(i) & C(i).ToString & " "
+                                If CkTrace.Checked Then
+                                    CmdBtn(i).Label2.Text = C(i).ToString
+                                End If
+                            Next
+                            If CkTrace.Checked Then
+                                Draw2(RESULT, False)
+                            End If
+                            RESULT += "'" & Sng2Hex(X) & vbTab & "'" & Sng2Hex(SPD) & vbTab & CDec(X).ToString & vbTab &
+                                        CDec(SPD).ToString & vbTab & CDec(Y).ToString & vbTab & CDec(SPY).ToString & vbCrLf
+                            Print(1, RESULT.Replace(" ", vbTab))
+                            j += 1
+                        End If
                     End If
                 End If
             End If
             C(0) = C(0) + 1
-            For I = 0 To S.GetUpperBound(0) - 1
-                If C(I) > UC(I) Then
-                    C(I) = LC(I)
-                    C(I + 1) += 1
+            For i = 0 To S.Length - 2
+                If C(i) > UC(i) Then
+                    C(i) = LC(i)
+                    C(i + 1) += 1
                 End If
             Next
-            PN += 1 '= C(UC.GetUpperBound(0))
-        Loop Until C(UC.GetUpperBound(0)) > UC(UC.GetUpperBound(0))
-        MaterialProgressBar1.Value = MaterialProgressBar1.Maximum
-        Label1.Text = DateTime.Now & " 找到解法" & J.ToString & "个"
+            'PN += 1
+        Loop Until C(C.Length - 1) > UC(UC.Length - 1)
+        'PBar.Value = PBar.Maximum
+        LblCal.Text = DateTime.Now & " 找到解法" & j.ToString & "个"
         FileClose(1)
     End Sub
-    Private Sub Button3_Click(sender As Object, e As EventArgs) Handles Button3.Click
+    Private Sub Button3_Click(sender As Object, e As EventArgs) Handles BtnSrc.Click
         If TSP.Checked Then
-            SearchMoveSpike()
-            Exit Sub
-        End If
-
-        If TX4.Checked OrElse TY4.Checked OrElse TS4.Checked Then
+            '搜索碰撞判定
+            LBox.Items.Clear()
+            FileNum = 1
+            SearchMoveSpike(T2.Text, Val(TSPX1.Text), Val(TSPX2.Text))
+        Else
+            '求解X Y S
             SearchMove()
-            Exit Sub
         End If
     End Sub
-    Dim Lbl(20) As Label
+
     Private Function GetCmd(a As String) As String
         Dim i As Integer, s As String = ""
+        If a.Length = 0 Then Return ""
         If InStr(a, "[") > 0 Then Return ""
         For i = 1 To a.Length
             If Not IsNumeric(Mid(a, i, 1)) Then
@@ -1412,16 +952,11 @@ Partial Class Form1
     End Sub
     Dim CResult As String
 
-    Private Sub Button4_Click(sender As Object, e As EventArgs) Handles Button4.Click
-        If TX4.Checked OrElse TY4.Checked OrElse TS4.Checked Then
-            T2.Text = T2.Text.Replace(vbTab, " ")
-            T2.Text = T2.Text.Replace(vbCr, "")
-            T2.Text = T2.Text.Replace(vbLf, "")
-            TestJump(T2.Text, True)
-            Draw2(False)
-            If Form2.Visible Then
-                Draw2form(False)
-            End If
+    Private Sub BtnCal_Click(sender As Object, e As EventArgs) Handles BtnCal.Click
+        If CkMulti.Checked Then
+            ReDrawMulti()
+        Else
+            ReDraw()
         End If
     End Sub
 
@@ -1429,7 +964,7 @@ Partial Class Form1
         Try
             Dim bmpDATA As New Imaging.BitmapData
             Dim tmpBMP = New Bitmap(BB)
-            Dim Rct As Rectangle = New Rectangle(0, 0, BB.Width, BB.Height)
+            Dim Rct = New Rectangle(0, 0, BB.Width, BB.Height)
             bmpDATA = tmpBMP.LockBits(Rct, Imaging.ImageLockMode.ReadWrite, Imaging.PixelFormat.Format32bppArgb)
             Dim BTS(bmpDATA.Stride * bmpDATA.Height) As Byte
             Runtime.InteropServices.Marshal.Copy(bmpDATA.Scan0, BTS, 0, BTS.Length - 1)
@@ -1450,7 +985,7 @@ Partial Class Form1
         Try
             Dim bmpDATA As New Imaging.BitmapData
             Dim tmpBMP = New Bitmap(BB)
-            Dim Rct As Rectangle = New Rectangle(0, 0, BB.Width, BB.Height)
+            Dim Rct = New Rectangle(0, 0, BB.Width, BB.Height)
             bmpDATA = tmpBMP.LockBits(Rct, Imaging.ImageLockMode.ReadWrite, Imaging.PixelFormat.Format32bppArgb)
             Dim BTS(bmpDATA.Stride * bmpDATA.Height) As Byte
             Runtime.InteropServices.Marshal.Copy(bmpDATA.Scan0, BTS, 0, BTS.Length - 1)
@@ -1478,55 +1013,147 @@ Partial Class Form1
         Dim i, j As Integer
         For i = -1 To 1
             For j = -1 To 1
-                G.DrawString(t, Label1.Font, Brushes.White, x + i, y + j)
+                G.DrawString(t, LblCal.Font, Brushes.White, x + i, y + j)
             Next
         Next
-        G.DrawString(t, Label1.Font, Brushes.Black, x, y)
+        G.DrawString(t, LblCal.Font, Brushes.Black, x, y)
         PB.Image = B
 Err:
     End Sub
+
+    Dim RefStrat As Boolean = False
+    Dim StratData As DataTable
     Sub LoadStrat()
-        If File.Exists(Application.StartupPath & "\data.txt") Then
-            ComboBox2.Items.Clear()
-            Dim r As StreamReader = New IO.StreamReader(Application.StartupPath & "\data.txt", System.Text.Encoding.Default)
-            Do Until r.EndOfStream
-                Dim s = r.ReadLine
-                ComboBox2.Items.Add(s)
-            Loop
-            r.Close()
-            If ComboBox2.Items.Count > 0 Then
-                ComboBox2.SelectedIndex = 0
+        StratData = New DataTable("Strat")
+        StratData.Columns.Add("t0")
+        StratData.Columns.Add("t1")
+        StratData.Columns.Add("t2")
+        StratData.Columns.Add("t20")
+        StratData.Columns.Add("t21")
+        If File.Exists(Application.StartupPath & "\Data.xml") Then
+            RefStrat = False
+            CBStrat.Items.Clear()
+            StratData.ReadXml(Application.StartupPath & "\Data.xml")
+            For i As Integer = 0 To StratData.Rows.Count - 1
+                CBStrat.Items.Add(StratData.Rows(i).Item(0))
+            Next
+            RefStrat = True
+            If CBStrat.Items.Count > 0 Then
+                CBStrat.SelectedIndex = 0
             End If
         End If
     End Sub
 
-    Dim Form2 As New Form, PicTip As New PictureBox
+    Private Sub SaveControlTextsToFile(filePath As String)
+        Using writer As New StreamWriter(filePath)
+            SaveControlTexts(Me, writer)
+        End Using
+    End Sub
+
+    Private Sub SaveControlTexts(parent As Control, writer As StreamWriter)
+        For Each ctrl As Control In parent.Controls
+            If Not String.IsNullOrEmpty(ctrl.Text) Then
+                writer.WriteLine($"{ctrl.Text}={ctrl.Text}")
+            End If
+            If ctrl.HasChildren Then
+                SaveControlTexts(ctrl, writer)
+            End If
+        Next
+    End Sub
+
+
+    Sub LoadCmdTrans(filePath As String)
+        If File.Exists(filePath) Then
+            Dim lines = File.ReadAllLines(filePath)
+            Dim idx As Integer = 0
+            ReDim CmdTrans(lines.Length - 1, 1)
+            For Each line In lines
+                Dim parts = line.Split("=")
+                If parts.Length < 2 Then
+                    CmdTrans(idx, 0) = ""
+                    CmdTrans(idx, 1) = ""
+                Else
+                    CmdTrans(idx, 0) = parts(0)
+                    CmdTrans(idx, 1) = parts(1)
+                End If
+                idx += 1
+            Next
+        End If
+    End Sub
+    Private Sub BtnSaveTexts_Click(sender As Object, e As EventArgs) Handles Button1.Click
+        'SaveControlTextsToFile("ControlTexts.txt")
+        ChangeControlTexts("ControlTexts.txt")
+    End Sub
+    Sub ChangeControlTexts(filePath As String)
+        If File.Exists(filePath) Then
+            Dim lines = File.ReadAllLines(filePath)
+            For Each line In lines
+                Dim parts = line.Split("=")
+                For Each ctrl In Me.Controls
+                    SetControlText(ctrl, parts(0), parts(1))
+                Next
+            Next
+        End If
+    End Sub
+    Sub SetControlText(ByRef parent As Control, ByVal text1 As String, ByVal text2 As String)
+        If Not String.IsNullOrEmpty(parent.Text) AndAlso parent.Text = text1 Then
+            parent.Text = text2
+        End If
+
+        If parent.HasChildren Then
+            For Each ctrl As Control In parent.Controls
+                SetControlText(ctrl, text1, text2)
+            Next
+        End If
+
+    End Sub
+
+    Dim PicTip As New PictureBox
+
+
+    ''' <summary>Loads the private fonts.</summary>
+    ''' <param name="fonts">The fonts to be loaded into the private font collection.</param>
+    Private Sub LoadPrivateFonts(ByVal fonts As IEnumerable(Of Byte()))
+        For Each resFont In fonts
+            pfc.AddMemoryFont(Runtime.InteropServices.Marshal.UnsafeAddrOfPinnedArrayElement(resFont, 0), resFont.Length)
+        Next
+    End Sub
+    Sub SetCtrlFont()
+        Dim F = New Font(pfc.Families(0), 9)
+        For Each i As Control In Me.Controls
+            i.Font = F
+            If i.Controls IsNot Nothing Then
+                For Each j As Control In i.Controls
+                    j.Font = F
+                Next
+            End If
+        Next
+    End Sub
+
+
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
 
-        Dim I As Integer
-        For I = 0 To 20
-            Lbl(I) = New Label
-            With Lbl(I)
-                .AutoSize = True
-                .BackColor = Color.White
-                .ForeColor = Color.Black
-            End With
-            Me.Controls.Add(Lbl(I))
-            Me.Controls.SetChildIndex(Lbl(I), 0)
-        Next
+        ' Add any initialization after the InitializeComponent() call.
+        pfc = New System.Drawing.Text.PrivateFontCollection()
+        LoadPrivateFonts({My.Resources.Resource1.fusion_pixel_12px_proportional})
+        SetCtrlFont()
 
-        PB.Image = Image.FromFile(Application.StartupPath & "\img\bg2.png")
-        PB.Width = Me.ClientSize.Width - 362
+        LoadCmdTrans("CommandTexts.txt")
+
+        Dim i As Integer
+        PB.Width = Me.ClientSize.Width - 353
         PB.Height = Me.ClientSize.Height - 10
 
-        ComboBox1.SelectedIndex = 0
         ComboBox3.SelectedIndex = 0
+        ComboBox1.SelectedIndex = 0
         ComboBox4.SelectedIndex = 1
         ComboBox5.SelectedIndex = 1
         ComboBox6.SelectedIndex = 0
-        ComboBox7.SelectedIndex = 0
-        MaterialComboBox1.SelectedIndex = 0
-        Tile = Image.FromFile(Application.StartupPath & "\IMG\TILE\12621-0.png")
+
+        CBItem.SelectedIndex = 0
+        CBJumpAcc.SelectedIndex = 0
+        Tile = Image.FromFile(Application.StartupPath &
+                              "\IMG\Model\M1_Field_underground.Nin_NX_NVN\M1_Field_underground.png")
 
         ReDim CamBlk(1)
         CamBlk(0).X = 0
@@ -1534,30 +1161,52 @@ Err:
         CamBlk(1).X = 15
         CamBlk(1).Y = 9
 
-        With Form2
-            .FormBorderStyle = FormBorderStyle.None
-            .Width = 1920
-            .Height = 1080
-            .TopMost = True
-            .BackColor = Color.FromArgb(255, 1, 2, 3)
-            .TransparencyKey = Color.FromArgb(255, 1, 2, 3)
-            .Opacity = 0.5
-            .KeyPreview = True
-        End With
+        'With Form2
+        '    .FormBorderStyle = FormBorderStyle.None
+        '    .Width = 1920
+        '    .Height = 1080
+        '    .TopMost = True
+        '    .BackColor = Color.FromArgb(255, 1, 2, 3)
+        '    .TransparencyKey = Color.FromArgb(255, 1, 2, 3)
+        '    .Opacity = 0.5
+        '    .KeyPreview = True
+        'End With
 
-        With PicTip
-            .Width = 1920
-            .Height = 1080
-            .Left = 0
-            .Top = 0
-            .BackColor = Color.FromArgb(255, 1, 2, 3)
-        End With
-        Form2.Controls.Add(PicTip)
+        'With PicTip
+        '    .Width = 1920
+        '    .Height = 1080
+        '    .Left = 0
+        '    .Top = 0
+        '    .BackColor = Color.FromArgb(255, 1, 2, 3)
+        'End With
+        'Form2.Controls.Add(PicTip)
 
-        AddHandler PicTip.MouseDoubleClick, AddressOf Form1_MouseDoubleClick
-        AddHandler Form2.KeyPress, AddressOf Form1_KeyPress
+        'AddHandler PicTip.MouseDoubleClick, AddressOf Form1_MouseDoubleClick
+        'AddHandler Form2.KeyPress, AddressOf Form1_KeyPress
+
+        For i = 0 To 99
+            CmdBtn(i) = New CmdCtrl
+            With CmdBtn(i)
+                .Label1.Text = ""
+                .Label2.Text = ""
+                .Left = Panel1.Width + 10
+                .Top = 10 + i * 26
+                .BackColor = If(i Mod 2 = 0, Color.White, Color.LightGray)
+                .Visible = False
+            End With
+            Me.Controls.Add(CmdBtn(i))
+        Next
+        DrawTileMode = 0
+        LoadPItem()
+        SelBackTile = New Bitmap(16, 16)
+        SelBackTileLoc = New Point(1, 0)
+        Dim G = Graphics.FromImage(SelBackTile)
+        G.DrawImage(PItem.Image, New Rectangle(0, 0, 16, 16),
+                    New Rectangle(16, 0, 16, 16), GraphicsUnit.Pixel)
+        BtnTile.Image = SelBackTile
 
         LoadStrat()
+
     End Sub
 
     Dim GG As Graphics
@@ -1575,11 +1224,11 @@ Err:
         If multiple <= 0 Then
             Return srcB
         End If
-        Dim B As Bitmap = New Bitmap(srcB.Size.Width * multiple, srcB.Size.Height * multiple)
-        Dim srcData As BitmapData = srcB.LockBits(New Rectangle(New Point(0, 0), srcB.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb)
-        Dim BData As BitmapData = B.LockBits(New Rectangle(New Point(0, 0), B.Size), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb)
-        Dim srcPtr As IntPtr = srcData.Scan0
-        Dim BPtr As IntPtr = BData.Scan0
+        Dim B = New Bitmap(srcB.Size.Width * multiple, srcB.Size.Height * multiple)
+        Dim srcData = srcB.LockBits(New Rectangle(New Point(0, 0), srcB.Size), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb)
+        Dim BData = B.LockBits(New Rectangle(New Point(0, 0), B.Size), ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb)
+        Dim srcPtr = srcData.Scan0
+        Dim BPtr = BData.Scan0
         For y As Integer = 0 To srcData.Height - 1
             For x As Integer = 0 To srcData.Width - 1
                 For i As Integer = 0 To multiple - 1
@@ -1594,11 +1243,15 @@ Err:
         Return B
     End Function
 
-    Sub DrawBG(W As Integer, H As Integer)
+    Sub DrawBG(W As Integer, H As Integer) '设置背景
+
         Dim i, j As Integer
         Dim B As New Bitmap(W * 16, H * 16)
         Dim G As Graphics = Graphics.FromImage(B)
-        Tile = Image.FromFile(Application.StartupPath & "\IMG\TILE\" & ComboBox3.Text & "-" & ComboBox4.SelectedIndex.ToString & If(CheckBox7.Checked, "", "A") & ".PNG")
+        Tile = Image.FromFile(Application.StartupPath & "\img\Model\" & ComboBox3.Text & "_Field_" &
+                              ComboBox4.Text & If(CheckBox7.Checked, "_D", "") &
+                              ".Nin_NX_NVN\" & ComboBox3.Text & "_Field_" &
+                              ComboBox4.Text & If(CheckBox7.Checked, "_D", "") & ".png")
         Dim TX, TY As Integer
         Select Case ComboBox5.SelectedIndex
             Case 0, 1, 2 '平台1
@@ -1632,9 +1285,6 @@ Err:
         Select Case ComboBox6.SelectedIndex
             Case 0 '地面
                 TX = 9 : TY = 7
-                For i = 0 To W - 1
-                    G.DrawImage(GetTile(8, 12), i * 16, (H - 1) * 16)
-                Next
             Case 1  '硬砖
                 TX = 6 : TY = 0
             Case 2   '云
@@ -1672,27 +1322,108 @@ Err:
                 Next
         End Select
 
-        For i = 0 To W - 1
-            G.DrawImage(GetTile(TX, TY), i * 16, (H - 2) * 16)
+        For i = 0 To (TYW.Value \ 16) - 1
+            For j = 0 To (TYH.Value \ 16) - 1
+                G.DrawImage(GetTile(TX, TY), i * 16, (H - j - 1) * 16)
+            Next
         Next
+
+        If CkBlk.Checked Then
+            For i = 0 To W - 1
+                For j = (TB.Value \ 16) + 1 To H - 1
+                    G.DrawImage(GetTile(TX, TY), i * 16, (H - j - 1) * 16)
+                Next
+            Next
+        End If
+
+        B = Magnifier(B, ImgZoom)
+        G = Graphics.FromImage(B)
 
         If SpikeBlk IsNot Nothing Then
             '画刺
+            '绿花8*21 大绿花24*42
+            '火花6*14
             For i = 0 To SpikeBlk.Length - 1
-                Select Case BlkType(i)
+                Select Case SpikeBlk(i).type
                     Case 0 '刺
-                        G.DrawImage(Image.FromFile(Application.StartupPath & "\img\T2.png"), SpikeBlk(i).X * 16, SpikeBlk(i).Y * 16, 16, 16)
+                        G.DrawImage(
+                        Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_FieldAnime_Normal\" &
+                              ComboBox3.Text & "_Field_anime_toge_N.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                              SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom, 16 * ImgZoom, 16 * ImgZoom)
                     Case 1 '绿花
-                        G.DrawImage(Image.FromFile(Application.StartupPath & "\img\T3.png"), SpikeBlk(i).X * 16, SpikeBlk(i).Y * 16 - 8, 16, 24)
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                            SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom - 8 * ImgZoom, 16 * ImgZoom, 24 * ImgZoom)
                     Case 2 '倒绿花
-                        G.DrawImage(Image.FromFile(Application.StartupPath & "\img\T3.png"), SpikeBlk(i).X * 16, SpikeBlk(i).Y * 16 + 24, 16, -24)
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                            SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom + 24 * ImgZoom, 16 * ImgZoom, -24 * ImgZoom)
+                    Case 3 '黑花
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packunblack.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                             SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom, 16 * ImgZoom, 16 * ImgZoom)
+                    Case 4 '大绿花
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), 2 * ImgZoom),
+                            SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom - 32 * ImgZoom, 32 * ImgZoom, 48 * ImgZoom)
+                    Case 5 '大倒绿花
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), 2 * ImgZoom),
+                            SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom + 48 * ImgZoom, 32 * ImgZoom, -48 * ImgZoom)
+                    Case 99
+                        G.DrawImage(Magnifier(GetTile(SpikeBlk(i).tx, SpikeBlk(i).ty), ImgZoom),
+                                    SpikeBlk(i).x * 8 * ImgZoom, SpikeBlk(i).y * 8 * ImgZoom, 16 * ImgZoom, 16 * ImgZoom)
                 End Select
             Next
         End If
-        PB.Image = Magnifier(B, 5)
+
+        If SpikeBlk IsNot Nothing And CkHitbox.Checked Then
+            '画刺
+            '绿花8*21 大绿花24*42
+            '火花6*14
+            For i = 0 To SpikeBlk.Length - 1
+                Select Case SpikeBlk(i).type
+                    Case 0, 3 '刺
+                        Dim np As Point() = {New Point((SpikeBlk(i).x * 8 + 3.1) * ImgZoom, (SpikeBlk(i).y * 8) * ImgZoom),
+                                New Point((SpikeBlk(i).x * 8 + 12.9) * ImgZoom - 1, (SpikeBlk(i).y * 8) * ImgZoom),
+                                New Point((SpikeBlk(i).x * 8 + 12.9) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(i).x * 8 + 15.9) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(i).x * 8 + 15.9) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(i).x * 8 + 10) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(i).x * 8 + 10) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 16) * ImgZoom - 1),
+                                New Point((SpikeBlk(i).x * 8 + 6) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 16) * ImgZoom - 1),
+                                New Point((SpikeBlk(i).x * 8 + 6) * ImgZoom - 1, (SpikeBlk(i).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(i).x * 8 + 0.1) * ImgZoom, (SpikeBlk(i).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(i).x * 8 + 0.1) * ImgZoom, (SpikeBlk(i).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(i).x * 8 + 3.1) * ImgZoom, (SpikeBlk(i).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(i).x * 8 + 3.1) * ImgZoom, (SpikeBlk(i).y * 8) * ImgZoom)}
+                        G.DrawLines(Pens.Red, np)
+                    Case 1 '绿花
+                        G.DrawRectangle(Pens.Red, (SpikeBlk(i).x * 8 + 4) * ImgZoom,
+                                        (SpikeBlk(i).y * 8 - 5) * ImgZoom, 8 * ImgZoom - 1, 21 * ImgZoom - 1)
+                    Case 2 '倒绿花
+                        G.DrawRectangle(Pens.Red, (SpikeBlk(i).x * 8 + 4) * ImgZoom,
+                                        SpikeBlk(i).y * 8 * ImgZoom, 8 * ImgZoom - 1, 21 * ImgZoom - 1)
+                    Case 4 '大绿花
+                        G.DrawRectangle(Pens.Red, (SpikeBlk(i).x * 8 + 4) * ImgZoom,
+                                        (SpikeBlk(i).y * 8 - 26) * ImgZoom, 24 * ImgZoom - 1, 42 * ImgZoom - 1)
+                    Case 5 '倒大绿花
+                        G.DrawRectangle(Pens.Red, (SpikeBlk(i).x * 8 + 4) * ImgZoom,
+                                        SpikeBlk(i).y * 8 * ImgZoom, 24 * ImgZoom - 1, 42 * ImgZoom - 1)
+                    Case 99
+
+                End Select
+            Next
+        End If
+        PB.Image = B
     End Sub
-    Private Function GetInsert(s As String, s0 As String, s1 As String) As String
-        Dim f As String = ""
+    Private Function GetInsert(s As String, s0 As String, s1 As String) As List(Of String)
+        Dim f, tf As New List(Of String)
         'Dim c As Integer '= GetNum(s)
         Dim ss As String '= GetCmd(s)
         Dim t() As String, i, i0, i1 As Integer, t0, t1 As String
@@ -1711,7 +1442,11 @@ Err:
                     t1 += t(i1)
                     If i1 < UBound(t) Then t1 += " "
                 Next
-                f += GetInsert(t(i), If(t0 = "", "", t0 & " "), If(t1 = "", "", " " & t1))
+                tf = GetInsert(t(i), If(t0 = "", "", t0 & " "), If(t1 = "", "", " " & t1))
+                If tf IsNot Nothing Then
+                    f.AddRange(tf)
+                End If
+
             Next
             For i = 0 To UBound(t) - 1
                 t0 = ""
@@ -1724,405 +1459,143 @@ Err:
                     t1 += t(i1)
                     If i1 < UBound(t) Then t1 += " "
                 Next
-                f += t0 & " i0 " & t1 & vbCrLf
+                f.Add(t0 & " i0 " & t1)
             Next
         Else
             '单独指令
             If InStr(s, "跑") > 0 OrElse InStr(s, "走") > 0 OrElse InStr(s, "蹲") > 0 OrElse InStr(s, "停") > 0 OrElse InStr(s, "立") > 0 Then
                 '地面指令不插入
-                Return ""
+                Return Nothing
             Else
                 GetNum(s, TL, TU)
                 'c = TL.ToString & "-" & TU.ToString
                 ss = GetCmd(s)
                 If TU < 4 Then
-                    Return ""
+                    Return Nothing
                 End If
                 For i = 2 To TU - 2
-                    f += s0 & ss & i.ToString & " " & "i0" & " " & ss & (TU - i).ToString & s1 & vbCrLf
+                    f.Add(s0 & ss & i.ToString & " " & "i0" & " " & ss & (TU - i).ToString & s1)
                 Next
             End If
         End If
         Return f
     End Function
-    Private Sub Button7_Click(sender As Object, e As EventArgs) Handles Button7.Click
-        '找插入
-        Label3.Text = DateTime.Now & " 开始搜索"
-        T2.Text = T2.Text.Replace(vbTab, " ")
-        Dim i As Integer
-        Dim S(), Tf, Si() As String
-        'Dim C(), D() As Integer
-        S = T2.Text.Split(" ")
-        'ReDim C(UBound(S)), D(UBound(S))
-        'For i = 0 To UBound(S)
-        '    GetNum(S(i), D(i), C(i))
-        'Next
-
-        Dim j As Integer
-        Tf = GetInsert(T2.Text, "", "")
-        Dim X, CX, CA As Single
-        CX = Val(TR2.Text) '目标
-        CA = Val(TR3.Text) '容错
-        Si = Tf.Replace(vbCrLf, "|").Split("|")
-        ListBox1.Items.Clear()
-        LB1State = 0
-        For j = 2 To Val(TR4.Text) '滞空帧
-            For i = 0 To UBound(Si) - 1
-                Tf = Si(i).Replace("i0", "滞空" & j.ToString)
-                X = TestJump(Tf, False)
-                If Math.Abs(X - CX) <= CA Then
-                    ListBox1.Items.Add(X & " " & Tf)
-                End If
-            Next
-        Next
-        Label3.Text = DateTime.Now & " 搜索完成"
+    Private Sub BtnFIns_Click(sender As Object, e As EventArgs) Handles BtnFIns.Click
+        FindIns(NIns.Value)
     End Sub
+    Function Txt2Cmd(t As String, ByRef UF As Integer) As String
+        Dim S(), temp As String
+        Dim i, k, m As Integer
+        Dim R As String = ""
+        UF = 0
+        S = t.Replace(vbCr, " ").Replace(vbLf, " ").Replace(vbTab, " ").Split(" ")
+        For i = 0 To S.Length - 1
+            temp = GetCmd(S(i))
+            If temp.Length > 0 Then
+                GetNum(S(i), k, m)
+                UF += m
+                R &= temp & m.ToString & " "
+            End If
+        Next
+        Return R.TrimEnd
+    End Function
+    Dim AccFrame As Boolean = False
+
     Private Function TestJump(CmdS As String, ShowRst As Boolean) As Single
-        Dim X, SPD, SPD2, R As Single
+        Dim X, SPD, SPD2, R, Y, SPY As Single
+        Dim i As Long
+        Dim S(), CmdT As String
+        Dim C(), TP, TF As Integer
+        Dim IsJump As Boolean
+        Dim RE As String = ""
+
+        S = CmdS.Split(" ")
+        ReDim C(S.Length - 1)
+        TF = 0
+        For i = 0 To S.Length - 1
+            If GetCmd(S(i)).Length > 0 Then
+                GetNum(S(i), TP, C(i))
+                TF += C(i)
+            End If
+        Next
+        'ReDim FrameData(TF)
+        'Debug.Print("REDIM=" & TF.ToString)
+        For i = 0 To TF
+            FrameData(i).F = 0
+            FrameData(i).Cmd = ""
+        Next
+        FrameLoc = 1
 
         WSpd = 0
         WFrame = 0
         SPD2 = Val(TS2.Text)
         R = Val(TS3.Text)
-
-        Dim I As Long
-        Dim S(), CmdT As String
-        Dim C() As Integer, TP As Integer
-        S = CmdS.Split(" ")
-        ReDim C(S.GetUpperBound(0))
-        For I = 0 To S.GetUpperBound(0)
-            If GetCmd(S(I)).Length > 0 Then GetNum(S(I), TP, C(I))
-        Next
-
-        T1.Text = ""
-        CResult = ""
         X = Val(TX1.Text)
         DSpd = Val(TD.Text)
         SPD = Val(TS1.Text)
+        SPY = Val(TSY1.Text)
+        Y = Val(TY1.Text)
 
-        Dim Y, SPY, DY As Single, IsJump As Boolean
-        Dim RE As String
-        SPY = 0
-        DY = Val(TY1.Text)
-        Y = DY
         IsJump = False
+        AccFrame = False
 
-        If CkLoc.Checked Then
-            MoveData = New DataTable
-            MoveData.Columns.Add("F")
-            MoveData.Columns.Add("X")
-            MoveData.Columns.Add("Y")
-            MoveData.Columns.Add("Sx")
-            MoveData.Columns.Add("Sy")
-        End If
+        HitBlk = CkBlk.Checked
+        HitBlkLoc = TB.Value
 
-        For I = 0 To UBound(S)
-            CmdT = GetCmd(S(I))
+        'If CkLoc.Checked Then
+        '    MoveData = New DataTable
+        '    MoveData.Columns.Add("F")
+        '    MoveData.Columns.Add("X")
+        '    MoveData.Columns.Add("Y")
+        '    MoveData.Columns.Add("Sx")
+        '    MoveData.Columns.Add("Sy")
+        'End If
+
+
+        For i = 0 To UBound(S)
+            CmdT = GetCmd(S(i))
             If CmdT.Length > 0 Then
-                GetNum(S(I), TP, TP)
+                GetNum(S(i), TF, TP)
                 If ShowRst Then
-                    T1.Text += GetCmd(S(I)) & "->" & TP.ToString
-                    CResult += GetCmd(S(I)) & "->" & TP.ToString
+                    RE += CmdT & TP.ToString & "▶"
                 End If
 
-                RE = ""
-                Select Case GetCmd(S(I)) ' Strings.Left(S(I), 4)
-                    Case "左反墙"
-                        RE += MWallJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "右反墙"
-                        RE += MWallJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
 
-                    Case "加速右跳"    '加速右跳
-                        RE += MJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速左跳"    '加速左跳
-                        RE += MJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速右"    '加速右跳
-                        RE += MAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "加速左"    '加速左跳
-                        RE += MAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "右跳"    '右跳
-                        RE += MJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "左跳"    '左跳
-                        RE += MJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
+                FrameData(FrameLoc - 1).Cmd = CmdT
+                FrameData(FrameLoc - 1).F = TP
 
-                    Case "无敌加速右跳"    '加速右跳
-                        RE += MSJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "无敌加速左跳"    '加速左跳
-                        RE += MSJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "无敌加速右"    '加速右跳
-                        RE += MSAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌加速左"    '加速左跳
-                        RE += MSAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌右跳"    '右跳
-                        RE += MSJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "无敌左跳"    '左跳
-                        RE += MSJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
+                MarioMove(CmdT, X, SPD, C(i), Y, SPY, IsJump)
 
-                    Case "加速右旋转"    '加速右跳
-                        RE += SpinJump(X, SPD, True, True, 0, Y, SPY, IsJump)
-                    Case "加速左旋转"    '加速左跳
-                        RE += SpinJump(X, SPD, False, True, 0, Y, SPY, IsJump)
-
-                    Case "右旋转"    '右跳
-                        RE += SpinJump(X, SPD, True, False, 0, Y, SPY, IsJump)
-                    Case "左旋转"    '左跳
-                        RE += SpinJump(X, SPD, False, False, 0, Y, SPY, IsJump)
-                    Case "旋转"    '匀速滞空跳
-                        RE += SpinAir(X, SPD, 0, Y, SPY, IsJump)
-                    Case "加速右旋转跳"    '加速右跳
-                        RE += MSpinJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "加速左旋转跳"    '加速左跳
-                        RE += MSpinJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "右旋转跳"    '右跳
-                        RE += MSpinJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "左旋转跳"    '左跳
-                        RE += MSpinJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-
-                    Case "右"    '右跳
-                        RE += MAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "左"    '左跳
-                        RE += MAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "无敌右"    '右跳
-                        RE += MSAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "无敌左"    '左跳
-                        RE += MSAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "滞空"    '匀速滞空跳
-                        RE += MAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "落体"    '匀速落体跳
-                        RE += MAir(X, SPD, C(I), Y, SPY, IsJump, 0)
-                    Case "落体站"    '匀速落体跳
-                        RE += MAir(X, SPD, C(I), Y, SPY, IsJump, 0)
-                    Case "落体正"    '匀速落体跳
-                        RE += MAir(X, SPD, C(I), Y, SPY, IsJump, 1)
-                    Case "落体反"    '匀速落体跳
-                        RE += MAir(X, SPD, C(I), Y, SPY, IsJump, -1)
-
-                    Case "跳" '原地跳
-                        RE += Jump(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "缓冲跳"
-                        RE += BJump(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "弹簧跳" '弹簧跳
-                        RE += TJump(X, SPD, Y, SPY, IsJump)
-
-                    Case "右跑"    '地面右跑
-                        RE += MRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "左跑"    '地面左跑
-                        RE += MRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "右走"    '地面右走
-                        RE += MRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "左走"    '地面左走
-                        RE += MRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-
-                    Case "右陡坡右跑"    '地面右跑
-                        RE += MDSlopeRun(X, SPD, True, True, C(I), Y, SPY, True)
-                    Case "右陡坡左跑"    '地面左跑
-                        RE += MDSlopeRun(X, SPD, False, True, C(I), Y, SPY, True)
-                    Case "右陡坡右走"    '地面右走
-                        RE += MDSlopeRun(X, SPD, True, False, C(I), Y, SPY, True)
-                    Case "右陡坡左走"    '地面左走
-                        RE += MDSlopeRun(X, SPD, False, False, C(I), Y, SPY, True)
-
-                    Case "左陡坡右跑"    '地面右跑
-                        RE += MDSlopeRun(X, SPD, True, True, C(I), Y, SPY, False)
-                    Case "左陡坡左跑"    '地面左跑
-                        RE += MDSlopeRun(X, SPD, False, True, C(I), Y, SPY, False)
-                    Case "左陡坡右走"    '地面右走
-                        RE += MDSlopeRun(X, SPD, True, False, C(I), Y, SPY, False)
-                    Case "左陡坡左走"    '地面左走
-                        RE += MDSlopeRun(X, SPD, False, False, C(I), Y, SPY, False)
-
-                    Case "右缓坡右跑"    '地面右跑
-                        RE += MHSlopeRun(X, SPD, True, True, C(I), Y, SPY, True)
-                    Case "右缓坡左跑"    '地面左跑
-                        RE += MHSlopeRun(X, SPD, False, True, C(I), Y, SPY, True)
-                    Case "右缓坡右走"    '地面右走
-                        RE += MHSlopeRun(X, SPD, True, False, C(I), Y, SPY, True)
-                    Case "右缓坡左走"    '地面左走
-                        RE += MHSlopeRun(X, SPD, False, False, C(I), Y, SPY, True)
-
-                    Case "左缓坡右跑"    '地面右跑
-                        RE += MHSlopeRun(X, SPD, True, True, C(I), Y, SPY, False)
-                    Case "左缓坡左跑"    '地面左跑
-                        RE += MHSlopeRun(X, SPD, False, True, C(I), Y, SPY, False)
-                    Case "左缓坡右走"    '地面右走
-                        RE += MHSlopeRun(X, SPD, True, False, C(I), Y, SPY, False)
-                    Case "左缓坡左走"    '地面左走
-                        RE += MHSlopeRun(X, SPD, False, False, C(I), Y, SPY, False)
-
-                    Case "无敌右跑"    '地面右跑
-                        RE += MSRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌左跑"    '地面左跑
-                        RE += MSRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌右走"    '地面右走
-                        RE += MSRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "无敌左走"    '地面左走
-                        RE += MSRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-                    Case "岩浆右走"    '地面右走
-                        RE += MFireRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "岩浆左走"    '地面左走
-                        RE += MFireRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-
-'=======================================================================
-                    Case "岩浆站立"    '地面站立
-                        RE += MFireDuck(X, SPD, C(I), Y, SPY)
-                    Case "岩浆站停"    '地面站立
-                        RE += MFireDuck(X, SPD, 999, Y, SPY)
-
-                    Case "站立"    '地面站立
-                        RE += MDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "正蹲"    '地面正蹲
-                        RE += MDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "反蹲"    '地面反蹲
-                        RE += MDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "站停"    '地面站立
-                        RE += MDuck(X, SPD, True, True, 999, Y, SPY, IsJump)
-                    Case "正停"    '地面正蹲
-                        RE += MDuck(X, SPD, False, True, 999, Y, SPY, IsJump)
-                    Case "反停"    '地面反蹲
-                        RE += MDuck(X, SPD, False, False, 999, Y, SPY, IsJump)
-                    Case "无敌站立"    '地面站立
-                        RE += MSDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "无敌正蹲"    '地面正蹲
-                        RE += MSDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "无敌反蹲"    '地面反蹲
-                        RE += MSDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "无敌站停"    '地面站立
-                        RE += MSDuck(X, SPD, True, True, 999, Y, SPY, IsJump)
-                    Case "无敌正停"    '地面正蹲
-                        RE += MSDuck(X, SPD, False, True, 999, Y, SPY, IsJump)
-                    Case "无敌反停"    '地面反蹲
-                        RE += MSDuck(X, SPD, False, False, 999, Y, SPY, IsJump)
-'=======================================================================
-                    Case "低重滞空"    '低重力匀速跳
-                        RE += LAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重落体" '低重力落体
-                        RE += LAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重跳"    '低重力匀速跳
-                        RE += LAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重右跳"    '低重力右跳
-                        RE += LJump(X, SPD, True, False, C(I), Y, SPY, IsJump, False)
-                    Case "低重左跳"    '低重力左跳
-                        RE += LJump(X, SPD, False, False, C(I), Y, SPY, IsJump, False)
-                    Case "低重右"    '低重力右跳
-                        RE += LAJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "低重左"    '低重力左跳
-                        RE += LAJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "低重加速右跳"    '低重力右跳
-                        RE += LJump(X, SPD, True, True, C(I), Y, SPY, IsJump, False)
-                    Case "低重加速左跳"    '低重力左跳
-                        RE += LJump(X, SPD, False, True, C(I), Y, SPY, IsJump, False)
-                    Case "低重加速右"    '低重力右跳
-                        RE += LAJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "低重加速左"    '低重力左跳
-                        RE += LAJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-'=======================================================================
-                    Case "坐莲" '坐莲
-                        RE += ZAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "滞空坐莲" '坐莲
-                        RE += ZAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重坐莲" '坐莲
-                        RE += LZAAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "低重滞空坐莲" '坐莲
-                        RE += LZAir(X, SPD, C(I), Y, SPY, IsJump)
-'=======================================================================
-                    Case "冰站立"    '地面站立
-                        RE += IDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "冰正蹲"    '地面正蹲
-                        RE += IDuck(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "冰反蹲"    '地面反蹲
-                        RE += IDuck(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "冰右跑"    '冰面右跑
-                        RE += IRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "冰右走"    '冰面右跑
-                        RE += IRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "冰左跑"    '冰面右跑
-                        RE += IRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "冰左走"    '冰面右跑
-                        RE += IRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-'=======================================================================
-                    Case "加速右缓冲跳"    '加速右跳
-                        RE += MJump(X, SPD, True, True, C(I), Y, SPY, IsJump, True)
-                    Case "加速左缓冲跳"    '加速左跳
-                        RE += MJump(X, SPD, False, True, C(I), Y, SPY, IsJump, True)
-                    Case "右缓冲跳"    '右跳
-                        RE += MJump(X, SPD, True, False, C(I), Y, SPY, IsJump, True)
-                    Case "左缓冲跳"    '左跳
-                        RE += MJump(X, SPD, False, False, C(I), Y, SPY, IsJump, True)
-                    Case "低重加速右缓冲跳"    '低重力右跳
-                        RE += LJump(X, SPD, True, True, C(I), Y, SPY, IsJump, True)
-                    Case "低重加速左缓冲跳"    '低重力左跳
-                        RE += LJump(X, SPD, False, True, C(I), Y, SPY, IsJump, True)
-                    Case "低重右缓冲跳"    '低重力右跳
-                        RE += LJump(X, SPD, True, False, C(I), Y, SPY, IsJump, True)
-                    Case "低重左缓冲跳"    '低重力左跳
-                        RE += LJump(X, SPD, False, False, C(I), Y, SPY, IsJump, True)
-'=======================================================================
-                    Case "风地右跑"    '风地面右跑
-                        RE += WRun(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "风地左跑"    '风地面左跑
-                        RE += WRun(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "风地右走"    '风地面右走
-                        RE += WRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "风地左走"    '风地面左走
-                        RE += WRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "左风站立"
-                        RE += WAir(X, SPD, C(I), Y, SPY, IsJump)
-                    Case "风右跑跳"    '加速右跳
-                        RE += WJump(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "风左跑跳"    '加速左跳
-                        RE += WJump(X, SPD, False, True, C(I), Y, SPY, IsJump)
-                    Case "风右跳"    '右跳
-                        RE += WJump(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "风左跳"    '左跳
-                        RE += WJump(X, SPD, False, False, C(I), Y, SPY, IsJump)
- '=======================================================================
-                    Case "水右跳"    '右跳
-                        RE += WtJump(X, SPD, True, True, C(I), Y, SPY, True, IsJump)
-                    Case "水左跳"    '左跳
-                        RE += WtJump(X, SPD, False, True, C(I), Y, SPY, True, IsJump)
-                    Case "水右"    '右
-                        RE += WtJump(X, SPD, True, True, C(I), Y, SPY, False, IsJump)
-                    Case "水左"    '左
-                        RE += WtJump(X, SPD, False, True, C(I), Y, SPY, False, IsJump)
-                    Case "水右走"    '地面右走
-                        RE += WtRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "水左走"    '地面左走
-                        RE += WtRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "水跳"
-                        RE += WtAir(X, SPD, False, True, C(I), Y, SPY, True, IsJump)
-                    Case "水落"
-                        RE += WtAir(X, SPD, False, True, C(I), Y, SPY, False, IsJump)
-                    Case "水站"    '地面站立
-                        RE += WtDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                    Case "水冰右走"    '地面右走
-                        RE += WtIceRun(X, SPD, True, False, C(I), Y, SPY, IsJump)
-                    Case "水冰左走"    '地面左走
-                        RE += WtIceRun(X, SPD, False, False, C(I), Y, SPY, IsJump)
-                    Case "水冰站"    '地面站立
-                        RE += WtIceDuck(X, SPD, True, True, C(I), Y, SPY, IsJump)
-                End Select
-
+                'CResult += vbTab & X.ToString & vbTab & SPD.ToString & vbCrLf & RE
                 If ShowRst Then
-                    CResult += vbTab & X.ToString & vbTab & SPD.ToString & vbCrLf & RE
-                    T1.Text += vbTab & X.ToString & vbTab & SPD.ToString & vbCrLf
-                    If CkLoc.Checked Then
-                        T1.Text += RE
-                        AddDataGrid(RE, S(I))
-                    End If
+                    'ⒶⒷⒸⒹⒺⒻⒼⒽⒾⒿⓀⓁⓂⓃⓄⓅⓆⓇⓈⓉⓊⓋⓌⓍⓎⓏ
+                    'ⓐⓑⓒⓓⓔⓕⓖⓗⓘⓙⓚⓛⓜⓝⓞⓟⓠⓡⓢⓣⓤⓥⓦⓧⓨⓩ
+                    '⒜⒝⒞⒟⒠⒡⒢⒣⒤⒥⒦⒧⒨⒩⒪⒫⒬⒭⒮⒯⒰⒱⒲⒳⒴⒵
+                    RE += "ⓧ" & Format(X, "0.0000") & " ⓨ" & Format(Y, "0.0000") & " Ⓢ" & Format(SPD, "0.0000") & " Ⓢ" & Format(SPY, "0.0000") & vbCrLf
                 End If
 
             End If
         Next
-
-        If ShowRst Then
-            Label1.Text = "x=" & X & " Sx=" & SPD & " y=" & Y & " Sy=" & SPY
+        Dim CR As String = "X" & vbTab & "Sx" & vbTab & "Y" & vbTab & "Sy" & vbCrLf
+        If CkLoc.Checked Then
+            For i = 0 To FrameData.Length - 1
+                CR &= FrameData(i).X & vbTab & FrameData(i).Sx & vbTab & FrameData(i).Y & vbTab & FrameData(i).Sy & vbCrLf
+            Next
+            Clipboard.Clear()
+            Clipboard.SetText(CR)
         End If
+        TX2.Text = Format(X, "0.000")
+        TY2.Text = Format(Y, "0.000")
+        TS2.Text = Format(SPD, "0.000")
+        TSY2.Text = Format(SPY, "0.000")
+        If ShowRst Then
+            LblCal.Text = "[" & (FrameLoc - 1).ToString & "] X=" & Format(X, "0.000") & " Sx=" & Format(SPD, "0.0000000000") & " Y=" & Format(Y, "0.000") & " Sy=" & Format(SPY, "0.000")
+            T1.Text = RE
+        End If
+
         Return X
     End Function
+
     Dim MoveData As DataTable
     Sub AddDataGrid(s As String, CMD As String)
         Dim P() = s.Replace(vbCrLf, "|").Split("|")
@@ -2132,62 +1605,18 @@ Err:
             R = P(i).Split(vbTab)
             If R.Length >= 4 Then
                 If F = 1 Then
-                    MoveData.Rows.Add(CMD, R(0), R(1), R(2), R(3))
+                    MoveData.Rows.Add("[" & CMD & "]1", R(0), R(1), R(2), R(3))
                 Else
-                    MoveData.Rows.Add(F, R(0), R(1), R(2), R(3))
+                    MoveData.Rows.Add(F.ToString, R(0), R(1), R(2), R(3))
                 End If
                 F += 1
             End If
         Next
+        DataGridView1.DataSource = MoveData
     End Sub
-    Private Sub Button8_Click(sender As Object, e As EventArgs) Handles Button8.Click
-        '找插入
-        Label3.Text = DateTime.Now & " 开始搜索"
-        T2.Text = T2.Text.Replace(vbTab, " ")
-        Dim i As Integer
-        Dim S(), Tf, Si(), Sii() As String
-        S = T2.Text.Split(" ")
-
-        Dim j, k As Integer
-        Tf = GetInsert(T2.Text, "", "")
-
-        Dim X, CX, CA As Single
-        CX = Val(TR2.Text) '目标
-        CA = Val(TR3.Text) '容错
-
-        Si = Tf.Replace(vbCrLf, "|").Split("|")
-        ListBox1.Items.Clear()
-
-        For j = 2 To Val(TR4.Text) '滞空帧
-            For i = 0 To UBound(Si) - 1
-                Tf = Si(i).Replace("i0", "滞空" & j.ToString)
-                X = TestJump(Tf, False)
-                If Math.Abs(X - CX) <= CA Then
-                    ListBox1.Items.Add(X & " " & Tf)
-                End If
-            Next
-        Next
-
-        For k = 0 To UBound(Si) - 1
-            Tf = GetInsert(Si(k), "", "")
-            Sii = Tf.Replace(vbCrLf, "|").Split("|")
-            For j = 2 To Val(TR4.Text) '滞空帧
-                For i = 0 To UBound(Sii) - 1
-                    Tf = Sii(i).Replace("i0", "滞空" & j.ToString)
-                    X = TestJump(Tf, False)
-                    If Math.Abs(X - CX) <= CA Then
-                        ListBox1.Items.Add(X & " " & Tf)
-                    End If
-                Next
-            Next
-        Next
-
-        Label3.Text = DateTime.Now & " 搜索完成"
-    End Sub
-
-
     Private Sub SaveGif(n As String, delayMs As Integer, endRe As Integer, Fr As Integer)
-        Label1.Text = "正在保存Gif..."
+        '保存GIF
+        LblCal.Text = DateTime.Now.ToString & " 正在保存Gif..."
         Application.DoEvents()
         Dim fileList() As String = System.IO.Directory.GetFiles(Application.StartupPath & "\temp")
         Dim c As Integer = fileList.Length
@@ -2200,7 +1629,7 @@ Err:
             gif.AddFrame(Image.FromFile(Application.StartupPath & "\temp\" & Fr.ToString & ".png"), -1, AnimatedGif.GifQuality.Bit8)
         Next
         gif.Dispose()
-        Label1.Text = "已保存Gif"
+        LblCal.Text = DateTime.Now.ToString & " 已保存Gif"
     End Sub
 
     Private Sub Button10_Click(sender As Object, e As EventArgs)
@@ -2208,12 +1637,19 @@ Err:
         PB.Image.Save(Application.StartupPath & "\" & T2.Text & ".PNG")
     End Sub
 
-    Private Sub Button11_Click(sender As Object, e As EventArgs) Handles Button11.Click
-        SaveGif(T2.Text & ".GIF", CInt(TDL.Text), 5, Draw2(True))
+    Private Sub Button11_Click(sender As Object, e As EventArgs) Handles BtnGif.Click
+        SaveGif(T2.Text & ".GIF", CInt(TDL.Text), 5, Draw2(T2.Text, True))
     End Sub
-    Dim SpikeBlk(), GrdBlk() As Point, BlkType() As Integer
-    Private Sub Button12_Click(sender As Object, e As EventArgs) Handles Button12.Click
-        Erase SpikeBlk, CamBlk, GrdBlk
+    Structure Blocks
+        Dim type As Integer
+        Dim x As Integer
+        Dim y As Integer
+        Dim tx As Integer
+        Dim ty As Integer
+    End Structure
+    Dim SpikeBlk() As Blocks
+    Private Sub Button12_Click(sender As Object, e As EventArgs) Handles BtnCls.Click
+        Erase SpikeBlk
         DrawBG(NumW.Value, NumH.Value)
     End Sub
 
@@ -2221,23 +1657,31 @@ Err:
     Dim IsSaveFrame As Boolean = False
 
     Private Sub Timer1_Tick(sender As Object, e As EventArgs) Handles Timer1.Tick
-        'GIF 已过时
+        '播放动画，弃用
         'PB.Image = Image.FromFile(Application.StartupPath & "\TEMP\" & NowFrame.ToString & ".PNG")
         'NowFrame += 1
         'If NowFrame > AniFrame Then NowFrame = 0
+        If GetAsyncKeyState(Keys.Q) Then
+            Timer1.Enabled = False
+            Me.Text = "Recording..."
+            ReadData()
+            Me.Text = "Done"
+            Timer1.Enabled = True
+        End If
+
     End Sub
 
-    Dim MX, MY As Single
+    Dim _MX, _MY As Single
     Dim MSpx, MSpy As Single, MAccX, MAccY As Single
 
 
     Dim PlayDelay As Integer
-    Private Sub Button14_Click(sender As Object, e As EventArgs) Handles Button14.Click
-        '模拟 暂时禁用
+    Private Sub BtnEmu_Click(sender As Object, e As EventArgs) Handles BtnEmu.Click
+        '模拟，未更新，弃用
         PlayDelay = Val(TFPS.Text)
         GetCharAct()
-        MX = 8
-        MY = 48
+        _MX = 8
+        _MY = 48
         MSpx = 0
         MSpy = 0
         MAccX = 0
@@ -2247,9 +1691,9 @@ Err:
         MIsJump = False
         Timer2.Enabled = Not Timer2.Enabled
         If Timer2.Enabled Then
-            Button14.Text = "停止"
+            BtnEmu.Text = "停止"
         Else
-            Button14.Text = "模拟"
+            BtnEmu.Text = "模拟"
         End If
     End Sub
 
@@ -2258,37 +1702,32 @@ Err:
     Private Declare Function GetAsyncKeyState Lib "user32" (ByVal vKey As Integer) As Integer
     Dim FPS As Integer = 0, LastFrame As Integer = 0
 
-    Private Sub Form1_MouseDoubleClick(sender As Object, e As MouseEventArgs) Handles MyBase.MouseDoubleClick
-        If e.Button = MouseButtons.Right Then
-            Form2.Visible = False
-        End If
-    End Sub
 
-    Private Sub Form1_KeyPress(sender As Object, e As KeyPressEventArgs) Handles MyBase.KeyPress
+    Private Sub Form1_KeyPress(sender As Object, e As KeyPressEventArgs)
+        '弃用，未更新
         Select Case e.KeyChar
             Case "W"
-                PicTip.Top -= 80
+                PicTip.Top -= 160
             Case "A"
-                PicTip.Left -= 80
+                PicTip.Left -= 160
             Case "S"
-                PicTip.Top += 80
+                PicTip.Top += 160
             Case "D"
-                PicTip.Left += 80
+                PicTip.Left += 160
         End Select
     End Sub
 
-    Private Sub Button16_Click(sender As Object, e As EventArgs) Handles Button16.Click
-        Dim r = New StreamWriter(Application.StartupPath & "\data.txt", False, System.Text.Encoding.Default)
-        For i = 0 To ComboBox2.Items.Count - 1
-            r.WriteLine(ComboBox2.Items(i).ToString)
-        Next
-        r.WriteLine(TxtStrat.Text & " " & TX1.Text & " " & TS1.Text & " " & TD.Text & " " & T2.Text)
-        r.Close()
+    Private Sub BtnSave_Click(sender As Object, e As EventArgs) Handles BtnSave.Click
+        StratData.Rows.Add(TxtStrat.Text,
+                            TX1.Text & " " & TS1.Text & " " & TY1.Text & " " & TYW.Value.ToString & " " &
+                            TB.Value.ToString & " " & TD.Text & " " & If(CkBlk.Checked, "1", "0"),
+                            T2.Text, T20.Text, T21.Text)
+        StratData.GetChanges().WriteXml(Application.StartupPath & "\Data.xml")
         LoadStrat()
     End Sub
 
-    Private Sub MaterialButton1_Click(sender As Object, e As EventArgs)
-        ''走位叠加
+    Private Sub CalStep()
+        '走位叠加，旧算法，弃用
         'Dim s1(), t0() As String
         'Dim data() As Integer, cmd() As String
         'Dim dataR() As Integer, cmdR() As String
@@ -2352,183 +1791,343 @@ Err:
         'Loop
         'Me.Text = "STEP"
     End Sub
-
-    Private Sub MaterialTextBox21_KeyPress(sender As Object, e As KeyPressEventArgs) Handles MaterialTextBox21.KeyPress
-        If e.KeyChar = vbCr Then
-            '步幅搜索
-            Dim C As Integer = Int(Val(MaterialTextBox21.Text) * 100 + 0.5)
-            If C >= 0 AndAlso C < 1600 Then
-                Dim R As String = C.ToString
-                Dim s() = File.ReadAllLines(Application.StartupPath & "\step\" & R & ".txt")
-                ListBox1.Items.Clear()
-                For i As Integer = 0 To s.Length - 1
-                    ListBox1.Items.Add(s(i))
-                Next
-                T2.Text = s(0)
-                TestJump(T2.Text, True)
-                Draw2(False)
-                If Form2.Visible Then
-                    Draw2form(False)
+    Structure StepData
+        Dim X As Integer
+        Dim C As String
+    End Structure
+    Dim isStepOpen As Boolean = False, MStepData() As StepData, MStepLoc(), MaxStep As Integer
+    Sub ReadStepData()
+        Dim s() = File.ReadAllLines(Application.StartupPath & "step\Step.txt")
+        ReDim MStepData(s.Length)
+        MStepData(s.Length).C = ""
+        MStepData(s.Length).X = 2100000000
+        For i As Integer = 0 To s.Length - 1
+            Dim p() As String = s(i).Split(vbTab)
+            MStepData(i).X = Int(p(0))
+            MStepData(i).C = ""
+            For j As Integer = 1 To p.Length - 1
+                If p(j).Length > 0 Then
+                    MStepData(i).C &= p(j) & " "
                 End If
-                Label3.Text = "步幅->" & MaterialTextBox21.Text
+            Next
+        Next
+        MaxStep = MStepData(s.Length - 1).X
+        MStepLoc = New Integer(MStepData.Last.X) {}
+        'Debug.Print(MStepLoc.Length)
+        For i = 0 To MStepData.Length - 1
+            If MStepLoc(MStepData(i).X) = 0 Then
+                MStepLoc(MStepData(i).X) = i
+            End If
+        Next
+        isStepOpen = True
+    End Sub
+    Function FindStepCombo(S As Integer) As List(Of Integer)
+        Dim R = New List(Of Integer)
+        'A+0
+        'If S < MStepLoc.Length AndAlso MStepLoc(S) > 0 Then
+        '    R.Add(S)
+        'End If
+        'A+B
+        For i = 1 To Math.Min(S \ 2, MStepLoc.Length)
+            If S - i < MStepLoc.Length AndAlso MStepLoc(i) > 0 AndAlso MStepLoc(S - i) > 0 Then
+                R.Add(i)
+            End If
+        Next
+        'A-B
+        For i = S + 1 To MStepLoc.Length - 1
+            If MStepLoc(i) > 0 AndAlso MStepLoc(i - S) > 0 Then
+                R.Add(-i)
+            End If
+        Next
+        Return R
+    End Function
+    Sub AddStepSplit(C As Integer, R As List(Of Integer), isLeft As Boolean)
+        Dim i, m, n As Integer
+        Dim K1, K2 As Integer
+        Dim SType As Integer
+        For Each i In R
+            Select Case i
+                Case Is > 0
+                    SType = 1
+                    K1 = i
+                    K2 = C - i
+                Case Is < 0
+                    SType = 2
+                    K1 = C - i
+                    K2 = -i
+                Case Else
+                    Exit Sub
+            End Select
+            Select Case SType
+                Case 1
+                    m = MStepLoc(Math.Abs(K1))
+                    Do
+                        n = MStepLoc(Math.Abs(K2))
+                        Do
+                            LBox.Items.Add(
+                                "[" & K1.ToString & "+" & K2.ToString & "] " &
+                                If(isLeft, RCmd(Eng2Cmd(MStepData(m).C)), Eng2Cmd(MStepData(m).C)) &
+                                If(isLeft, RCmd(Eng2Cmd(MStepData(n).C)), Eng2Cmd(MStepData(n).C)))
+                            n += 1
+                        Loop While MStepData(n).X = K2
+                        m += 1
+                    Loop While MStepData(m).X = K1
+                Case Else
+                    m = MStepLoc(Math.Abs(K1))
+                    Do
+                        n = MStepLoc(Math.Abs(K2))
+                        Do
+                            LBox.Items.Add(
+                                "[" & K1.ToString & "-" & K2.ToString & "] " &
+                                If(isLeft, RCmd(Eng2Cmd(MStepData(m).C)), Eng2Cmd(MStepData(m).C)) &
+                                If(isLeft, Eng2Cmd(MStepData(n).C), RCmd(Eng2Cmd(MStepData(n).C))))
+                            n += 1
+                        Loop While MStepData(n).X = K2
+                        m += 1
+                    Loop While MStepData(m).X = K1
+            End Select
+
+        Next
+    End Sub
+    Function Eng2Cmd(S As String) As String
+        Dim R = S.Replace("L", "左跑")
+        R = R.Replace("R", "右跑")
+        R = R.Replace("l", "左走")
+        R = R.Replace("r", "右走")
+        R = R.Replace("s", "站立")
+        R = R.Replace("f", "正蹲")
+        R = R.Replace("b", "反蹲")
+        R = R.Replace("S", "站停")
+        R = R.Replace("F", "正停")
+        R = R.Replace("B", "反停")
+        Return R
+    End Function
+    Private Sub TxtStep_KeyPress(sender As Object, e As KeyPressEventArgs) Handles TxtStep.KeyPress
+        If e.KeyChar = vbCr Then
+            If isStepOpen = False Then
+                ReadStepData()
+            End If
+            '步幅搜索
+            Dim i As Integer
+            Dim C As Integer = Int(Val(TxtStep.Text) * 100 + 0.5)
+            Dim IsLeft As Boolean = C < 0
+            C = Math.Abs(C)
+            If C <= MaxStep * 2 Then
+                LBox.Items.Clear()
+                If IsLeft Then
+                    For i = 0 To MStepData.Length - 2
+                        If MStepData(i).X = C Then
+                            LBox.Items.Add(RCmd(Eng2Cmd(MStepData(i).C)))
+                        ElseIf MStepData(i).X > C Then
+                            Exit For
+                        End If
+                    Next
+                Else
+                    For i = 0 To MStepData.Length - 2
+                        If MStepData(i).X = C Then
+                            LBox.Items.Add(Eng2Cmd(MStepData(i).C))
+                        ElseIf MStepData(i).X > C Then
+                            Exit For
+                        End If
+                    Next
+                End If
+                If CB1F.Checked Then
+                    Dim R = FindStepCombo(C)
+                    If R IsNot Nothing Then
+                        AddStepSplit(C, R, IsLeft)
+                    End If
+                    LblState.Text = "步幅 -> " & TxtStep.Text & " 解法 +" & LBox.Items.Count + R.Count
+                Else
+                    LblState.Text = "步幅 -> " & TxtStep.Text & " 解法 +" & LBox.Items.Count
+                End If
+
             End If
         End If
     End Sub
-
-    Dim LB1State As Integer = 0
-    Function Jump2Cmd(s As String) As String
-        Dim r() = s.Split(vbTab)
-        If r(3) = "0" Then
-            Return "加速右跳" & r(1) & " 加速右" & r(2) & " 加速右跳20"
-        Else
-            Return "加速右跳" & r(1) & " 加速右" & r(2) & " 加速右跳" & r(3) & " 加速右" & r(4) & " 加速右跳20"
-        End If
+    Function RCmd(S As String) As String '操作镜像
+        Dim R = S.Replace("右", "||")
+        R = R.Replace("左", "{}")
+        R = R.Replace("{}", "右")
+        R = R.Replace("||", "左")
+        R = S.Replace("Right", "||")
+        R = R.Replace("Left", "{}")
+        R = R.Replace("{}", "Right")
+        R = R.Replace("||", "Left")
+        Return R
     End Function
-    Private Sub MaterialTextBox22_KeyPress(sender As Object, e As KeyPressEventArgs) Handles MaterialTextBox22.KeyPress
+    Dim LB1State As Integer = 0
+
+    Private Sub TxtAir_KeyPress(sender As Object, e As KeyPressEventArgs) Handles TxtAir.KeyPress
+        '滞空数据列表，弃用
         If e.KeyChar = vbCr Then
             '滞空搜索
-            Dim C() As String = MaterialTextBox22.Text.Split("-")
+            Dim C() As String = TxtAir.Text.Split("-")
             Dim R1 As Integer = C(0) * 1000
             Dim R2 As Integer = C(1) * 1000
-            Dim s() = File.ReadAllLines(Application.StartupPath & "\jump\" & MaterialComboBox1.Text & ".txt")
-            ListBox1.Items.Clear()
+            Dim s() = File.ReadAllLines(Application.StartupPath & "\jump\" & CBJumpAcc.Text & ".txt")
+            LBox.Items.Clear()
             LB1State = 1
             For i As Integer = 0 To s.Length - 1
                 If Int(s(i)) <= R2 AndAlso Int(s(i)) >= R1 Then
-                    Dim s2() = File.ReadAllLines(Application.StartupPath & "\jump\" & MaterialComboBox1.Text & "\" & s(i) & ".txt")
+                    Dim s2() = File.ReadAllLines(Application.StartupPath & "\jump\" & CBJumpAcc.Text & "\" & s(i) & ".txt")
                     For j As Integer = 0 To s2.Length - 1
-                        ListBox1.Items.Add(AJump2Cmd(s2(j)))
+                        LBox.Items.Add(AJump2Cmd(s2(j)))
                     Next
                 End If
             Next
-            If ListBox1.Items.Count > 0 Then
-                T2.Text = ListBox1.Items(0).ToString
-                TestJump(T2.Text, True)
-                Draw2(False)
+            If LBox.Items.Count > 0 Then
+                ReDraw()
             End If
         End If
     End Sub
     Function AJump2Cmd(A As String) As String
         Dim s() = A.Split(vbTab)
         If s.Length = 9 Then
-            Return "[" & s(5) & "/" & s(6) & "/" & s(7) & "/" & s(8) & "]" & " 加速右跳" & s(1) & " 加速右" & s(2) & " 加速右跳" & s(3) & " 加速右" & s(4) & " 加速右跳20"
+            Select Case CBJumpAcc.Text
+                Case "3.568", "3.748", "3.808", "3.868" '普通跳
+                    If s(3) = "0" Then
+                        Return "[" & s(5) & "/" & s(6) & "/" & s(7) & "/" & s(8) & "]" & " 加速右跳" & s(1) & " 加速右" & s(2) & " 加速右跳30"
+                    Else
+                        Return "[" & s(5) & "/" & s(6) & "/" & s(7) & "/" & s(8) & "]" & " 加速右跳" & s(1) & " 加速右" & s(2) & " 加速右跳" & s(3) & " 加速右" & s(4) & " 加速右跳30"
+                    End If
+                Case Else '缓冲跳
+                    If s(3) = "0" Then
+                        Return "[" & s(5) & "/" & s(6) & "/" & s(7) & "/" & s(8) & "]" & " 加速右缓冲跳" & s(1) & " 加速右" & s(2) & " 加速右跳30"
+                    Else
+                        Return "[" & s(5) & "/" & s(6) & "/" & s(7) & "/" & s(8) & "]" & " 加速右缓冲跳" & s(1) & " 加速右" & s(2) & " 加速右跳" & s(3) & " 加速右" & s(4) & " 加速右跳30"
+                    End If
+            End Select
         Else
             Return ""
         End If
     End Function
-    Private Sub MaterialTextBox21_Enter(sender As Object, e As EventArgs) Handles MaterialTextBox21.Click
-        MaterialTextBox21.SelectAll()
+    Private Sub TxtStep_Click(sender As Object, e As EventArgs) Handles TxtStep.Click
+        TxtStep.SelectAll()
     End Sub
 
-    Private Sub MaterialTextBox22_Enter(sender As Object, e As EventArgs) Handles MaterialTextBox22.Click
-        MaterialTextBox22.SelectAll()
+    Private Sub TxtAir_Click(sender As Object, e As EventArgs) Handles TxtAir.Click
+        TxtAir.SelectAll()
     End Sub
 
-    Private Sub ComboBox2_SelectedIndexChanged(sender As Object, e As EventArgs) Handles ComboBox2.SelectedIndexChanged
-        If ComboBox2.SelectedIndex >= 0 Then
-            Dim s() = ComboBox2.SelectedItem.ToString.Split(" ")
-            TxtStrat.Text = s(0)
-            TX1.Text = s(1)
-            TS1.Text = s(2)
-            TD.Text = s(3)
-            T2.Text = ""
-            For i As Integer = 4 To s.Length - 1
-                T2.Text += s(i) & " "
-            Next
-            Button4_Click(Button4, New EventArgs())
+    Private Sub CBStrat_SelectedIndexChanged(sender As Object, e As EventArgs) Handles CBStrat.SelectedIndexChanged
+        If RefStrat AndAlso CBStrat.SelectedIndex >= 0 Then
+            Dim s() = StratData.Rows(CBStrat.SelectedIndex).Item(1).ToString.Split(" ")
+            TxtStrat.Text = StratData.Rows(CBStrat.SelectedIndex).Item(0).ToString
+            TX1.Text = s(0)
+            TS1.Text = s(1)
+            TY1.Text = s(2)
+            TYH.Value = Val(s(2))
+            TYW.Value = Val(s(3))
+            TB.Value = Val(s(4))
+            TD.Text = s(5)
+            CkBlk.Checked = s(6) = "1"
+            T2.Text = StratData.Rows(CBStrat.SelectedIndex).Item(2).ToString
+            T20.Text = StratData.Rows(CBStrat.SelectedIndex).Item(3).ToString
+            T21.Text = StratData.Rows(CBStrat.SelectedIndex).Item(4).ToString
+            BtnCal_Click(BtnCal, New EventArgs())
         End If
     End Sub
-
-    Private Sub Button15_Click(sender As Object, e As EventArgs) Handles Button15.Click
-        '弃用
-        Form2.Visible = Not Form2.Visible
-        If Form2.Visible Then
-            With Form2
-                .Left = Val(TxtFormLoc.Text)
-                .Top = 0
-                .Opacity = Val(TxtOpc.Text)
-            End With
-            With PicTip
-                .Left = 0
-                .Top = 0
-            End With
-        End If
-    End Sub
-
 
     Private Declare Function timeGetTime Lib "winmm.dll" () As Integer
     Dim MJumpF As Byte = 1
-    Dim CharAct(11) As Bitmap
+    Dim CharAct(11, 3) As Bitmap, CharActName As String = "MarioMdl", CharPack As String = "12621"
     Dim OFX, OFY, CHW, CHH As Integer
     Sub GetCharAct()
-        Dim F As String = Application.StartupPath & "\img\pack\" & ComboBox3.Text
-        Select Case ComboBox3.Text
-            Case "12621"
-                F &= "\M1_Model-M1_Player_"
-                Select Case ComboBox1.Text
+        '角色贴图加载，待更新
+        Dim F As String = Application.StartupPath & "\img\pack\"
+        Select Case CharPack
+            Case "M1"
+                F &= "M1_Model\M1_Player_" & CharActName & ".Nin_NX_NVN\"
+                Select Case CharActName
                     Case "MarioMdl_4"
-                        OFX = -8 * 5 : OFY = 0
-                        CHW = 24 * 5 : CHH = 16 * 5
+                        OFX = -8 * ImgZoom : OFY = 0
+                        CHW = 24 * ImgZoom : CHH = 16 * ImgZoom
                     Case Else
                         OFX = 0 : OFY = 0
-                        CHW = 16 * 5 : CHH = 16 * 5
+                        CHW = 16 * ImgZoom : CHH = 16 * ImgZoom
                 End Select
-            Case "13133"
-                F &= "\M3_Model-M3_Player_"
-                Select Case ComboBox1.Text
+            Case "M3"
+                F &= "M3_Model\M3_Player_" & CharActName & ".Nin_NX_NVN\"
+                Select Case CharActName
                     Case "MarioMdl_4"
-                        OFX = -8 * 5 : OFY = 0
-                        CHW = 32 * 5 : CHH = 16 * 5
+                        OFX = -8 * ImgZoom : OFY = 0
+                        CHW = 32 * ImgZoom : CHH = 16 * ImgZoom
                     Case Else
                         OFX = 0 : OFY = 0
-                        CHW = 16 * 5 : CHH = 16 * 5
+                        CHW = 16 * ImgZoom : CHH = 16 * ImgZoom
                 End Select
-            Case "22349"
-                F &= "\MW_Model-MW_Player_"
-                Select Case ComboBox1.Text
+            Case "MW"
+                F &= "MW_Model\MW_Player_" & CharActName & ".Nin_NX_NVN\"
+                Select Case CharActName
                     Case "MarioMdl_4", "MarioMdl_3"
-                        OFX = -8 * 5 : OFY = -16 * 5
-                        CHW = 32 * 5 : CHH = 32 * 5
+                        OFX = -8 * ImgZoom : OFY = -16 * ImgZoom
+                        CHW = 32 * ImgZoom : CHH = 32 * ImgZoom
                     Case Else
-                        OFX = 0 : OFY = -16 * 5
-                        CHW = 16 * 5 : CHH = 32 * 5
+                        OFX = 0 : OFY = -16 * ImgZoom
+                        CHW = 16 * ImgZoom : CHH = 32 * ImgZoom
+                End Select
+            Case Else
+                F &= "M1_Model\M1_Player_" & CharActName & ".Nin_NX_NVN\"
+                Select Case CharActName
+                    Case "MarioMdl_4"
+                        OFX = -8 * ImgZoom : OFY = 0
+                        CHW = 24 * ImgZoom : CHH = 16 * ImgZoom
+                    Case Else
+                        OFX = 0 : OFY = 0
+                        CHW = 16 * ImgZoom : CHH = 16 * ImgZoom
                 End Select
         End Select
-        If CkDuck.Checked Then
-            For I As Integer = 0 To 4
-                CharAct(I) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--stoop.0.png"), 5)
-                CharAct(I + 5) = CharAct(I).Clone()
-                CharAct(I + 5).RotateFlip(RotateFlipType.RotateNoneFlipX)
+
+        Dim i, j As Integer
+        If Not CkMario.Checked Then
+            For i = 0 To 11
+                For j = 0 To 3
+                    CharAct(i, j) = New Bitmap(CHW, CHH)
+                Next
             Next
-            CharAct(10) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--stoop.0.png"), 5)
-            CharAct(11) = CharAct(10).Clone()
-            CharAct(11).RotateFlip(RotateFlipType.RotateNoneFlipX)
         Else
-            'M1_Model-M1_Player_MarioMdl_4--stoop.0.png
-            CharAct(0) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--wait.0.png"), 5)
-            CharAct(1) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--walk.0.png"), 5)
-            CharAct(2) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--walk.1.png"), 5)
+            If CkDuck.Checked Then
+                For i = 0 To 4
+                    CharAct(i, 0) = Magnifier(Image.FromFile(F & "stoop.0.png"), ImgZoom)
+                    CharAct(i + 5, 0) = CharAct(i, 0).Clone()
+                    CharAct(i + 5, 0).RotateFlip(RotateFlipType.RotateNoneFlipX)
+                Next
+                CharAct(10, 0) = Magnifier(Image.FromFile(F & "stoop.0.png"), ImgZoom)
+                CharAct(11, 0) = CharAct(10, 0).Clone()
+                CharAct(11, 0).RotateFlip(RotateFlipType.RotateNoneFlipX)
+            Else
+                '0站 1走A 2走B 3走C 4跳 5-9镜像
+                CharAct(0, 0) = Magnifier(Image.FromFile(F & "wait.0.png"), ImgZoom)
+                CharAct(1, 0) = Magnifier(Image.FromFile(F & "walk.0.png"), ImgZoom)
+                CharAct(2, 0) = Magnifier(Image.FromFile(F & "walk.1.png"), ImgZoom)
 
-            Try
-                CharAct(3) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--walk.2.png"), 5)
-            Catch
-                CharAct(3) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--walk.0.png"), 5)
-            End Try
+                If File.Exists(F & "walk.2.png") Then
+                    CharAct(3, 0) = Magnifier(Image.FromFile(F & "walk.2.png"), ImgZoom)
+                Else
+                    CharAct(3, 0) = Magnifier(Image.FromFile(F & "walk.0.png"), ImgZoom)
+                End If
 
-            CharAct(4) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--jump.0.png"), 5)
+                CharAct(4, 0) = Magnifier(Image.FromFile(F & "jump.0.png"), ImgZoom)
 
-            For I As Integer = 0 To 4
-                CharAct(I + 5) = CharAct(I).Clone()
-                CharAct(I + 5).RotateFlip(RotateFlipType.RotateNoneFlipX)
+                For i = 0 To 4
+                    CharAct(i + 5, 0) = CharAct(i, 0).Clone()
+                    CharAct(i + 5, 0).RotateFlip(RotateFlipType.RotateNoneFlipX)
+                Next
+                CharAct(10, 0) = Magnifier(Image.FromFile(F & "stoop.0.png"), ImgZoom)
+                CharAct(11, 0) = CharAct(10, 0).Clone()
+                CharAct(11, 0).RotateFlip(RotateFlipType.RotateNoneFlipX)
+            End If
+            For i = 0 To 11
+                CharAct(i, 1) = SetOpacity(CharAct(i, 0), Val(TxtOpc.Text) / 100)
+                CharAct(i, 2) = SetReverseColor(CharAct(i, 0))
+                CharAct(i, 3) = SetReverseColor(SetOpacity(CharAct(i, 0), Val(TxtOpc.Text) / 100))
             Next
-            CharAct(10) = Magnifier(Image.FromFile(F & ComboBox1.Text & "--stoop.0.png"), 5)
-            CharAct(11) = CharAct(10).Clone()
-            CharAct(11).RotateFlip(RotateFlipType.RotateNoneFlipX)
         End If
-
 
     End Sub
     Private Sub Timer2_Tick(sender As Object, e As EventArgs) Handles Timer2.Tick
+        '未更新，弃用
+
         Do Until timeGetTime - LastFrame > PlayDelay
 
         Loop
@@ -2555,7 +2154,7 @@ Err:
                 End Select
                 MSpx += MAccX
                 If MSpx > 3 Then MSpx = 3
-                MX += MSpx
+                _MX += MSpx
             ElseIf GetAsyncKeyState(Keys.A) Then
                 Select Case MSpx
                     Case Is > 0
@@ -2571,9 +2170,9 @@ Err:
                 End Select
                 MSpx += MAccX
                 If MSpx < -3 Then MSpx = -3
-                MX += MSpx
+                _MX += MSpx
             ElseIf MSpx <> 0 Then
-                MX += MSpx
+                _MX += MSpx
             End If
             'Y轴
             If GetAsyncKeyState(Keys.J) Then
@@ -2603,12 +2202,12 @@ Err:
             End If
             MSpy += MAccY
             If MSpy < -4 Then MSpy = -4
-            MY += MSpy
+            _MY += MSpy
 
             '碰撞检测
-            If MY <= 48 Then
+            If _MY <= 48 Then
                 MSpy = 0
-                MY = 48
+                _MY = 48
                 MJumpF = If(MSpx < 0, 1, 0)
                 MIsJump = False
             End If
@@ -2632,7 +2231,7 @@ Err:
                 End Select
                 MSpx += MAccX
                 If MSpx > 3 Then MSpx = 3
-                MX += MSpx
+                _MX += MSpx
             ElseIf GetAsyncKeyState(Keys.A) Then
                 MJumpF = 1
                 Select Case MSpx
@@ -2649,7 +2248,7 @@ Err:
                 End Select
                 MSpx += MAccX
                 If MSpx < -3 Then MSpx = -3
-                MX += MSpx
+                _MX += MSpx
             ElseIf MSpx <> 0 Then
                 Select Case MSpx
                     Case Is > 1.5
@@ -2668,7 +2267,7 @@ Err:
                 Else
                     MSpx += MAccX
                 End If
-                MX += MSpx
+                _MX += MSpx
             End If
             'Y轴
             If GetAsyncKeyState(Keys.J) AndAlso Not MIsJump Then
@@ -2683,7 +2282,7 @@ Err:
                     Case Else
                         MSpy = 3.568
                 End Select
-                MY += MSpy
+                _MY += MSpy
             End If
         End If
 
@@ -2691,55 +2290,50 @@ Err:
         MP2 = New Bitmap(1280, 800)
         Dim G = Graphics.FromImage(MP2)
         G.DrawImage(MP, 0, 0)
-        If IsHitSpike(Int(MX * 5), Int(805 - MY * 5)) Then
+        If IsHitSpike(Int(_MX * 5), Int(805 - _MY * 5)) Then
             If MIsJump Then
-                G.DrawImage(SetReverseColor(CharAct(4 + MJumpF * 5)), MX * 5, 805 - MY * 5, 80, 80)
+                G.DrawImage(CharAct(4 + MJumpF * 5, 0), _MX * 5, 805 - _MY * 5, 80, 80)
             Else
-                G.DrawImage(SetReverseColor(CharAct(MJumpF * 5 + GetWalkFrame(FPS, MSpx))), MX * 5, 805 - MY * 5, 80, 80)
+                G.DrawImage(CharAct(MJumpF * 5, 0), _MX * 5, 805 - _MY * 5, 80, 80)
             End If
         Else
             If MIsJump Then
-                G.DrawImage(CharAct(4 + MJumpF * 5), MX * 5, 805 - MY * 5, 80, 80)
+                G.DrawImage(CharAct(4 + MJumpF * 5, 0), _MX * 5, 805 - _MY * 5, 80, 80)
             Else
-                G.DrawImage(CharAct(MJumpF * 5 + GetWalkFrame(FPS, MSpx)), MX * 5, 805 - MY * 5, 80, 80)
+                G.DrawImage(CharAct(MJumpF * 5, 0), _MX * 5, 805 - _MY * 5, 80, 80)
             End If
         End If
-        G.DrawString("X=" & MX.ToString & vbCrLf & "Y=" & MY.ToString & vbCrLf & "Sx=" & MSpx.ToString & vbCrLf & "Sy=" & MSpy.ToString,
-                        Label1.Font, Brushes.White, MX * 5, 805 - MY * 5 - 100)
+        G.DrawString("X=" & _MX.ToString & vbCrLf & "Y=" & _MY.ToString & vbCrLf & "Sx=" & MSpx.ToString & vbCrLf & "Sy=" & MSpy.ToString,
+                        LblCal.Font, Brushes.White, _MX * 5, 805 - _MY * 5 - 100)
         PB.Image = MP2
     End Sub
 
-    Private Sub Button13_Click(sender As Object, e As EventArgs) Handles Button13.Click
+    Private Sub BtnPlay_Click(sender As Object, e As EventArgs) Handles BtnPlay.Click
         If Timer1.Enabled Then
-            Button13.Text = "播放"
+            BtnPlay.Text = "播放"
             Timer1.Enabled = False
         Else
             If Not IsSaveFrame Then
                 '未保存动画，生成新帧
-                T2.Text = T2.Text.Replace(vbTab, " ")
-                T2.Text = T2.Text.Replace(vbCr, "")
-                T2.Text = T2.Text.Replace(vbLf, "")
-                TestJump(T2.Text, True)
-                AniFrame = Draw2(True)
+                Dim CU As Integer
+                TestJump(Txt2Cmd(T2.Text, CU), True)
+                AniFrame = Draw2(T2.Text, True)
             End If
             If NowFrame > AniFrame Then NowFrame = 0
             Timer1.Interval = Int(TDL.Text)
             Timer1.Enabled = True
-            Button13.Text = "停止"
+            BtnPlay.Text = "停止"
         End If
     End Sub
-    Private Sub MaterialButton3_Click(sender As Object, e As EventArgs) Handles MaterialButton3.Click
-        Draw2form(True)
-    End Sub
-    Private Sub ListBox1_SelectedIndexChanged(sender As System.Object, e As Global.System.EventArgs) Handles ListBox1.SelectedIndexChanged
-        If ListBox1.SelectedItem IsNot Nothing Then
-            T2.Text = ListBox1.SelectedItem.ToString
-            TestJump(T2.Text, True)
-            Draw2(False)
+
+    Private Sub LBox_SelectedIndexChanged(sender As System.Object, e As Global.System.EventArgs) Handles LBox.SelectedIndexChanged
+        If LBox.SelectedItem IsNot Nothing Then
+            T2.Text = LBox.SelectedItem.ToString
+            ReDraw()
         End If
     End Sub
     Private Sub Form1_Resize(sender As System.Object, e As Global.System.EventArgs) Handles MyBase.Resize
-        PB.Width = Me.ClientSize.Width - 362
+        PB.Width = Me.ClientSize.Width - 353
         PB.Height = Me.ClientSize.Height - 10
     End Sub
 
@@ -2752,24 +2346,105 @@ Err:
                 Dim EPoint = PB.PointToImage(e.X, e.Y)
                 If SpikeBlk Is Nothing Then
                     ReDim Preserve SpikeBlk(0)
-                    ReDim Preserve BlkType(0)
-                    SpikeBlk(0).X = EPoint.X \ 80
-                    SpikeBlk(0).Y = EPoint.Y \ 80
-                    BlkType(0) = ComboBox7.SelectedIndex
+                    SpikeBlk(0).x = (EPoint.X - 4 * ImgZoom) \ (8 * ImgZoom)
+                    SpikeBlk(0).y = (EPoint.Y - 4 * ImgZoom) \ (8 * ImgZoom)
+                    If DrawTileMode = 0 Then
+                        SpikeBlk(0).type = CBItem.SelectedIndex
+                    Else
+                        SpikeBlk(0).type = 99
+                        SpikeBlk(0).tx = SelBackTileLoc.X
+                        SpikeBlk(0).ty = SelBackTileLoc.Y
+                    End If
                 Else
                     ReDim Preserve SpikeBlk(UBound(SpikeBlk) + 1)
-                    ReDim Preserve BlkType(UBound(BlkType) + 1)
-                    SpikeBlk(UBound(SpikeBlk)).X = EPoint.X \ 80
-                    SpikeBlk(UBound(SpikeBlk)).Y = EPoint.Y \ 80
-                    BlkType(UBound(SpikeBlk)) = ComboBox7.SelectedIndex
+                    SpikeBlk(UBound(SpikeBlk)).x = (EPoint.X - 4 * ImgZoom) \ (8 * ImgZoom)
+                    SpikeBlk(UBound(SpikeBlk)).y = (EPoint.Y - 4 * ImgZoom) \ (8 * ImgZoom)
+                    If DrawTileMode = 0 Then
+                        SpikeBlk(UBound(SpikeBlk)).type = CBItem.SelectedIndex
+                    Else
+                        SpikeBlk(UBound(SpikeBlk)).type = 99
+                        SpikeBlk(UBound(SpikeBlk)).tx = SelBackTileLoc.X
+                        SpikeBlk(UBound(SpikeBlk)).ty = SelBackTileLoc.Y
+                    End If
                 End If
-                Select Case ComboBox7.SelectedIndex
+
+                Select Case SpikeBlk(UBound(SpikeBlk)).type
                     Case 0 '刺
-                        G.DrawImage(Magnifier(Image.FromFile(Application.StartupPath & "\img\T2.png"), 5), (EPoint.X \ 80) * 80, (EPoint.Y \ 80) * 80, 80, 80)
+                        G.DrawImage(
+                        Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_FieldAnime_Normal\" &
+                              ComboBox3.Text & "_Field_anime_toge_N.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                              SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom, SpikeBlk(UBound(SpikeBlk)).y * 8 * ImgZoom,
+                              16 * ImgZoom, 16 * ImgZoom)
+                        If CkHitbox.Checked Then
+                            Dim np As Point() = {New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 3.1) * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8) * ImgZoom),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 12.9) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8) * ImgZoom),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 12.9) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 15.9) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 15.9) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 10) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 10) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 16) * ImgZoom - 1),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 6) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 16) * ImgZoom - 1),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 6) * ImgZoom - 1, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 0.1) * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 12) * ImgZoom - 1),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 0.1) * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 3.1) * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 4) * ImgZoom),
+                                New Point((SpikeBlk(UBound(SpikeBlk)).x * 8 + 3.1) * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8) * ImgZoom)}
+                            G.DrawLines(Pens.Red, np)
+                        End If
                     Case 1 '绿花
-                        G.DrawImage(Magnifier(Image.FromFile(Application.StartupPath & "\img\T3.png"), 5), (EPoint.X \ 80) * 80, (EPoint.Y \ 80) * 80 - 40, 80, 120)
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                            SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8 - 8) * ImgZoom,
+                            16 * ImgZoom, 24 * ImgZoom)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.Red, (SpikeBlk(UBound(SpikeBlk)).x * 8 + 4) * ImgZoom,
+                                           (SpikeBlk(UBound(SpikeBlk)).y * 8 - 5) * ImgZoom,
+                                           8 * ImgZoom - 1, 21 * ImgZoom - 1)
+                        End If
                     Case 2 '倒绿花
-                        G.DrawImage(Magnifier(Image.FromFile(Application.StartupPath & "\img\T3.png"), 5), (EPoint.X \ 80) * 80, (EPoint.Y \ 80) * 80 + 120, 80, -120)
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                            SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8 + 24) * ImgZoom,
+                            16 * ImgZoom, -24 * ImgZoom)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.Red, (SpikeBlk(UBound(SpikeBlk)).x * 8 + 4) * ImgZoom,
+                                            SpikeBlk(UBound(SpikeBlk)).y * 8 * ImgZoom,
+                                            8 * ImgZoom - 1, 21 * ImgZoom - 1)
+                        End If
+                    Case 4 '大绿花 '绿花8*21 大绿花24*42
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), 2 * ImgZoom),
+                            SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom, (SpikeBlk(UBound(SpikeBlk)).y * 8 - 32) * ImgZoom,
+                            32 * ImgZoom, 48 * ImgZoom)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.Red, (SpikeBlk(UBound(SpikeBlk)).x * 8 + 4) * ImgZoom,
+                                            (SpikeBlk(UBound(SpikeBlk)).y * 8 - 26) * ImgZoom,
+                                            24 * ImgZoom - 1, 42 * ImgZoom - 1)
+                        End If
+                    Case 5 '倒大绿花
+                        G.DrawImage(
+                            Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                              ComboBox3.Text & "_Enemy_packun.Nin_NX_NVN\wait.0.png"), 2 * ImgZoom),
+                            SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom,
+                            (SpikeBlk(UBound(SpikeBlk)).y * 8 + 48) * ImgZoom, 32 * ImgZoom, -48 * ImgZoom)
+                        If CkHitbox.Checked Then
+                            G.DrawRectangle(Pens.Red, (SpikeBlk(UBound(SpikeBlk)).x * 8 + 4) * ImgZoom,
+                                            SpikeBlk(UBound(SpikeBlk)).y * 8 * ImgZoom,
+                                            24 * ImgZoom - 1, 42 * ImgZoom - 1)
+                        End If
+                    Case 3 '黑花
+                        G.DrawImage(
+                        Magnifier(Image.FromFile(Application.StartupPath & "\img\Pack\" & ComboBox3.Text & "_Model\" &
+                          ComboBox3.Text & "_Enemy_packunblack.Nin_NX_NVN\wait.0.png"), ImgZoom),
+                        SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom,
+                        SpikeBlk(UBound(SpikeBlk)).y * 8 * ImgZoom, 16 * ImgZoom, 16 * ImgZoom)
+                    Case 99
+                        G.DrawImage(Magnifier(GetTile(SpikeBlk(UBound(SpikeBlk)).tx, SpikeBlk(UBound(SpikeBlk)).ty), ImgZoom),
+                         SpikeBlk(UBound(SpikeBlk)).x * 8 * ImgZoom,
+                         SpikeBlk(UBound(SpikeBlk)).y * 8 * ImgZoom, 16 * ImgZoom, 16 * ImgZoom)
                 End Select
 
                 'Case MouseButtons.Left '画砖
@@ -2784,7 +2459,7 @@ Err:
                 '    End If
                 '    G.DrawImage(Magnifier(GetTile(9, 12), 5), (e.X \ 80) * 80, (e.Y \ 80) * 80, 80, 80)
 
-                'Case MouseButtons.Middle '设置摄像机，已过时
+                'Case MouseButtons.Middle '设置像机，弃用
                 '    If CamBlk Is Nothing Then
                 '        ReDim Preserve CamBlk(0)
                 '        CamBlk(0).X = e.X \ 80
@@ -2803,4 +2478,623 @@ Err:
         PB.Image = B
         PB.Refresh()
     End Sub
+    Sub ReDraw()
+        Dim CU As Integer
+        Dim t = Txt2Cmd(T2.Text, CU)
+        If t.Length = 0 Then Exit Sub
+        T2.Text = t
+        '增加调整按钮
+        RefBtn(t)
+        TestJump(t, True)
+        Draw2(T2.Text, False)
+    End Sub
+
+    Sub ReDrawMulti()
+        Dim CU As Integer
+        DrawBG(NumW.Value, NumH.Value)
+        Dim B As Bitmap = PB.Image
+        Dim G As Graphics = Graphics.FromImage(B)
+        Dim t As String
+
+        t = Txt2Cmd(T2.Text, CU)
+        If t.Length > 0 Then
+            T2.Text = t
+            RefBtn(t)
+            TestJump(t, True)
+            G.DrawImage(Draw3(t, Pens.White), 0, 0)
+        End If
+        t = Txt2Cmd(T20.Text, CU)
+        If t.Length > 0 Then
+            T20.Text = t
+            TestJump(t, True)
+            G.DrawImage(SetOpacity(Draw3(t, Pens.Yellow), 0.5), 0, 0)
+        End If
+        t = Txt2Cmd(T21.Text, CU)
+        If t.Length > 0 Then
+            T21.Text = t
+            TestJump(t, True)
+            G.DrawImage(SetOpacity(Draw3(t, Pens.GreenYellow), 0.5), 0, 0)
+        End If
+        PB.Image = B
+    End Sub
+    Sub RefBtn(t As String)
+        Dim s() = t.Split(" ")
+        Dim i, k, m As Integer
+
+        For i = 0 To Math.Min(s.Length - 1, 99)
+            GetNum(s(i), k, m)
+            With CmdBtn(i)
+                .Label1.Text = GetCnCmd(GetCmd(s(i)), False)
+                .Label2.Text = m
+                .Visible = True
+            End With
+        Next
+        For i = Math.Min(s.Length - 1, 99) + 1 To 99
+            CmdBtn(i).Visible = False
+        Next
+        PB.SendToBack()
+    End Sub
+    Private Sub BtnP1_Click(sender As Object, e As EventArgs) Handles BtnP1.Click
+        TX1.Text = (Val(TX1.Text) + 1).ToString
+        ReDraw()
+    End Sub
+
+    Private Sub BtnP01_Click(sender As Object, e As EventArgs) Handles BtnP01.Click
+        TX1.Text = ((Val(TX1.Text) * 10 + 1) / 10).ToString
+        ReDraw()
+    End Sub
+
+    Private Sub BtnM1_Click(sender As Object, e As EventArgs) Handles BtnM1.Click
+        TX1.Text = (Val(TX1.Text) - 1).ToString
+        ReDraw()
+    End Sub
+
+    Private Sub BtnM01_Click(sender As Object, e As EventArgs) Handles BtnM01.Click
+        TX1.Text = ((Val(TX1.Text) * 10 - 1) / 10).ToString
+        ReDraw()
+    End Sub
+
+
+    Private Sub TYW_ValueChanged(sender As Object, e As EventArgs) Handles TYW.ValueChanged
+        ReDraw()
+    End Sub
+
+    Private Sub TB_ValueChanged(sender As Object, e As EventArgs) Handles TB.ValueChanged
+        ReDraw()
+    End Sub
+
+    Private Sub TYH_ValueChanged(sender As Object, e As EventArgs) Handles TYH.ValueChanged
+        TY1.Text = TYH.Value.ToString
+        ReDraw()
+    End Sub
+
+    Private Sub NumW_ValueChanged(sender As Object, e As EventArgs) Handles NumW.ValueChanged
+        ReDraw()
+    End Sub
+
+    Private Sub NumH_ValueChanged(sender As Object, e As EventArgs) Handles NumH.ValueChanged
+        ReDraw()
+    End Sub
+
+    Private Sub NumericUpDown1_ValueChanged(sender As Object, e As EventArgs)
+        ReDraw()
+    End Sub
+
+    Private Sub BtnMont_Click(sender As Object, e As EventArgs) Handles BtnMont.Click
+        '多线程搜索测试
+        SearchMoveSpikeM(T2.Text, Val(TSPX1.Text), Val(TSPX2.Text))
+    End Sub
+
+    Structure MoveNode
+        Dim Node As Collection(Of MoveNode)
+        Dim State As MarioFrameData
+    End Structure
+    Sub SearchMoveMont(RN As Single, ST As Single)
+        '搜索
+
+    End Sub
+
+    Private Sub ComboBox1_SelectedIndexChanged(sender As Object, e As EventArgs) Handles ComboBox1.SelectedIndexChanged
+        CharActName = ComboBox1.Text
+        GetCharAct()
+    End Sub
+
+    Private Sub CkMario_CheckedChanged(sender As Object, e As EventArgs) Handles CkMario.CheckedChanged
+        GetCharAct()
+    End Sub
+
+    Private Sub ComboBox3_SelectedIndexChanged(sender As Object, e As EventArgs) Handles ComboBox3.SelectedIndexChanged
+        CharPack = ComboBox3.Text
+        GetCharAct()
+    End Sub
+
+    Private Sub CkDuck_CheckedChanged(sender As Object, e As EventArgs) Handles CkDuck.CheckedChanged
+        GetCharAct()
+    End Sub
+
+    Dim TasData() As String
+    Private Sub BTas_Click(sender As Object, e As EventArgs) Handles BTas.Click
+        Dim i, j, z As Integer
+        Dim CL, CU, CF As Integer
+        Dim t As String, LastOri As String = ""
+        t = T20.Text & " " & T2.Text & " " & T21.Text
+        t = t.Replace("停0", "停0 站立10")
+        Dim s() = t.Split(" ")
+        ReDim TasData(s.Length - 1)
+        z = 0
+        For i = 0 To s.Length - 1
+            If s(i).Length > 0 Then
+                GetNum(s(i), CL, CU)
+                If CU = 0 Then
+                    z += 60
+                Else
+                    z += CU
+                End If
+                s(i) = GetCnCmd(GetCmd(s(i)), True) & CL.ToString & "-" & CU.ToString
+            End If
+        Next
+        ReDim TasData(z - 1)
+        T1.Text = ""
+        z = 0
+        For i = 0 To s.Length - 1
+            '3 KEY_DLEFT;KEY_DDOWN 0;0 0;0
+            '帧 按键;按键 0;0 0;0
+            'A B X Y
+            t = " "
+            If s(i).Length > 0 Then
+                If InStr(s(i), "正") > 0 Then
+                    Select Case LastOri
+                        Case ""
+
+                        Case "R"
+                            t &= "KEY_DRIGHT;KEY_DDOWN;"
+                            LastOri = "R"
+                        Case "L"
+                            t &= "KEY_DLEFT;KEY_DDOWN;"
+                            LastOri = "L"
+                    End Select
+                End If
+                If InStr(s(i), "反") > 0 Then
+                    Select Case LastOri
+                        Case ""
+
+                        Case "R"
+                            t &= "KEY_DLEFT;KEY_DDOWN;"
+                            LastOri = "L"
+                        Case "L"
+                            t &= "KEY_DRIGHT;KEY_DDOWN;"
+                            LastOri = "R"
+                    End Select
+                End If
+                If InStr(s(i), "右") > 0 Then
+                    t &= "KEY_DRIGHT;"
+                    LastOri = "R"
+                End If
+                If InStr(s(i), "左") > 0 Then
+                    t &= "KEY_DLEFT;"
+                    LastOri = "L"
+                End If
+                If InStr(s(i), "旋转跳") > 0 Then
+                    t &= "KEY_R;"
+                ElseIf InStr(s(i), "旋转") > 0 Then
+                    t &= "KEY_R;"
+                ElseIf InStr(s(i), "缓冲跳") > 0 Then
+
+                ElseIf InStr(s(i), "跳") > 0 Then
+                    t &= "KEY_A;"
+                End If
+                If InStr(s(i), "滞空") > 0 Then
+                    t &= "KEY_A;"
+                End If
+                If InStr(s(i), "加速") > 0 Then
+                    t &= "KEY_Y;"
+                End If
+                If InStr(s(i), "跑") > 0 Then
+                    t &= "KEY_Y;"
+                End If
+                If InStr(s(i), "转") > 0 Then
+                    t &= "KEY_R;"
+                End If
+                If InStr(s(i), "上") > 0 Then
+                    t &= "KEY_DUP;"
+                End If
+                If InStr(s(i), "下") > 0 Then
+                    t &= "KEY_DDOWN;"
+                End If
+                If InStr(s(i), "D") > 0 Then
+                    t &= "KEY_DDOWN;"
+                End If
+                If InStr(s(i), "+") > 0 Then
+                    t &= "KEY_PLUS;"
+                End If
+                t = Strings.Left(t, t.Length - 1)
+                t &= " 0;0 0;0"
+
+                GetNum(s(i), CL, CU)
+                If CU = 0 Then CU = 60
+                For j = 1 To CU
+                    TasData(z) = z.ToString & t
+                    T1.Text &= TasData(z) & vbCrLf
+                    z += 1
+                Next
+            End If
+        Next
+
+        File.WriteAllLines(Application.StartupPath & "Tas\Script0-1.txt", TasData)
+
+        LblCal.Text = DateTime.Now & " 已保存Script0-1"
+    End Sub
+
+    Dim YuzuM As MemoryScanner, isFind As Boolean = False
+    Dim XAddr, YAddr, SxAddr, SyAddr, AyAddr, AxAddr As String
+    Private Sub BReadMem_Click(sender As Object, e As EventArgs) Handles BReadMem.Click
+        BReadMem.Enabled = False
+        If TimerEmu.Enabled Then
+            TimerEmu.Enabled = False
+            LblCal.Text = Date.Now & " 已关闭Emu"
+            T1.Text = "[X ]" & XAddr & vbCrLf & "[Y ]" & YAddr & vbCrLf &
+                "[Sx]" & SxAddr & vbCrLf & "[Sy]" & SyAddr & vbCrLf &
+                "[Ax]" & AxAddr & vbCrLf & "[Ay]" & AyAddr
+            BReadMem.Enabled = True
+            Exit Sub
+        End If
+        '7B 14 AE BE CD CC 4C 3D -H50
+        '70 54 85 82 00 00 00 00 50 8C 00 99 21 00 00 00 00 E5 8D 80 +H30
+        Dim F = &H3D4CCCCDBEAE147B
+        If Not isFind Then
+            YuzuM = New MemoryScanner(Function(p) p.ProcessName = "yuzu")
+
+            For i = &H10000008ED0L To &H3F000008ED0L Step &H100000L
+                If YuzuM.ReadMemory(Of Long)(i) = F Then
+                    F = i
+                    XAddr = F - &H50
+                    YAddr = F - &H50 + &H4
+                    SxAddr = F - &H50 + &HC
+                    SyAddr = F - &H50 + &H10
+                    AyAddr = F - &H50 + &H50
+                    AxAddr = F - &H50 + &H54
+                    If YuzuM.ReadMemory(Of Byte)(XAddr) = 72 Then
+                        isFind = True
+                    End If
+                    Exit For
+                End If
+            Next
+        End If
+
+        If isFind Then
+            'T1.Text = "[X ]" & XAddr & vbCrLf & "[Y ]" & YAddr & vbCrLf &
+            '    "[Sx]" & SxAddr & vbCrLf & "[Sy]" & SyAddr & vbCrLf &
+            '    "[Ax]" & AxAddr & vbCrLf & "[Ay]" & AyAddr
+            Debug.Print("X = {0} , Y = {1} , Sx = {2} , Sy = {3}", XAddr, YAddr, SxAddr, SyAddr)
+            TimerEmu.Enabled = True
+            LblCal.Text = Date.Now & " 已开启Emu"
+        Else
+            LblCal.Text = Date.Now & " 未找到基址"
+        End If
+        BReadMem.Enabled = True
+    End Sub
+    Sub ReadData()
+        Dim LX, NX As Integer
+        Dim Re(1) As Collection(Of Single)
+        Dim ReH(1) As Collection(Of Integer)
+        Dim i As Integer
+
+        Dim M = New MemoryScanner(Function(p) p.ProcessName = "yuzu")
+        For i = 0 To 0
+            Re(i) = New Collection(Of Single)
+            ReH(i) = New Collection(Of Integer)
+        Next
+        LX = -1
+        Do
+            Application.DoEvents()
+            NX = M.ReadMemory(Of Single)(XAddr)
+            'NY = M.ReadInt(YAddr)
+            If NX <> LX Then
+                LX = NX
+                'LY = NY
+                Re(0).Add(M.ReadMemory(Of Single)(XAddr))
+                ReH(0).Add(NX)
+                'Re(1).Add(M.ReadFloat(YAddr))
+                'ReH(1).Add(NY)
+            End If
+        Loop Until GetAsyncKeyState(Keys.E)
+
+        Dim R = ""
+        For i = 0 To Re(0).Count - 1
+            R &= i.ToString & vbTab
+            For j = 0 To 0
+                R &= Re(j).Item(i).ToString & vbTab & Strings.Right("00000000" & Hex(ReH(j).Item(i)), 8) & vbTab & Hex2Dbl(Strings.Right("00000000" & Hex(ReH(j).Item(i)), 8))
+            Next
+            R &= vbCrLf
+        Next
+
+        T1.Text = R
+        Clipboard.Clear()
+        Clipboard.SetText(R)
+    End Sub
+    Structure InsData
+        Dim Loc As List(Of Integer)
+        Dim Frame As List(Of Integer)
+    End Structure
+
+
+    Sub FindIns(D As Integer) '找插入
+        LblState.Text = Date.Now & " 开始搜索"
+        LBox.Items.Clear()
+        Dim i, j, k, LF, NF, UF, F, A, CL, CU As Integer
+        Dim X, CX, CA, EX As Single
+        Dim Mx(), Ms() As Single
+        T20.Text = Txt2Cmd(T20.Text, LF)
+        T2.Text = Txt2Cmd(T2.Text, NF)
+        NF += LF
+        T21.Text = Txt2Cmd(T21.Text, UF)
+        TestJump(T20.Text & " " & T2.Text & " " & T21.Text, False)
+        F = FrameLoc - 1
+        ReDim Mx(F), Ms(F)
+        Mx(0) = Val(TX1.Text)
+        Ms(0) = Val(TS2.Text)
+        Debug.Print("帧{0}:X={1},S={2}", 0, Mx(i), Ms(i))
+        For i = 1 To F
+            Mx(i) = FrameData(i).X
+            Ms(i) = FrameData(i).Sx
+            Debug.Print("帧{0}:X={1},S={2}", i, Mx(i), Ms(i))
+        Next
+
+        EX = FrameData(F).X '末位置
+        CX = Val(TR2.Text) '目标
+        CA = Val(TR3.Text) '容错
+        A = Val(TR4.Text) '帧数
+
+        Dim InsLoc = New List(Of Integer) '有效位置
+        Dim RCmd = GetInsCmd(T2.Text)
+        T2.Text = RCmd
+        Dim Cmd() = RCmd.Split(" ")
+        LF += GetAirCmd(RCmd)
+        Debug.Print("LF={0} NF={1} UF={2}", LF, NF, UF)
+        F = 0
+        Dim C1F As Integer = If(CB1F.Checked, 1, 2)
+        For i = 0 To Cmd.Length - 1
+            GetNum(Cmd(i), CL, CU)
+            If F >= LF AndAlso F <= NF Then
+                For j = C1F To CU - C1F
+                    InsLoc.Add(F + j)
+                    Debug.Print(Cmd(i) & "->" & j.ToString & "[" & (F + j).ToString & "]")
+                Next
+                If i < Cmd.Length - 1 Then
+                    InsLoc.Add(F + CU)
+                    Debug.Print(Cmd(i) & "->" & CU.ToString & "[" & (F + CU).ToString & "]")
+                End If
+            End If
+            F += CU
+        Next
+
+        Dim Deep As Integer = NIns.Value
+        Dim C As New Combination
+        Dim R, RR As List(Of Integer())
+        Dim CF() As Integer
+        'Dim TR As String
+        Debug.Print(Date.Now & " 开始搜索")
+
+        For i = 1 To Deep
+            Application.DoEvents()
+            Debug.Print(Date.Now & " [搜索] D -> " & i.ToString)
+            R = C.GetComb(InsLoc, i)
+            RR = New List(Of Integer())
+            For Each R2 In R
+                For k = 0 To R2.Length - 2
+                    If R2(k + 1) - R2(k) <= 1 Then
+                        Exit For
+                    End If
+                Next
+                If k = R2.Length - 1 Then
+                    RR.Add(R2)
+                End If
+            Next
+
+            ReDim CF(i - 1)
+            For j = 0 To i - 1
+                CF(j) = C1F
+            Next
+            Do
+                Application.DoEvents()
+                For Each R2 In RR
+                    X = EX
+                    For k = 0 To R2.Length - 1
+                        '第R2(k)位置插入CF(k)帧
+                        'EX = FrameData(F).X '末位置
+                        'CX = Val(TR2.Text) '目标
+                        'CA = Val(TR3.Text) '容错
+                        X += Ms(R2(k)) * CF(k)
+                    Next
+                    If Math.Abs(X - CX) <= CA Then
+                        'TR = ""
+                        'For k = 0 To R2.Length - 1
+                        '    TR &= R2(k).ToString & "*" & CF(k).ToString & "F "
+                        'Next
+                        LBox.Items.Add("[" & X.ToString & "] " & OutputInsCmd(RCmd, R2, CF))
+                    End If
+                Next
+                CF(i - 1) += 1
+                For k = i - 1 To 1 Step -1
+                    If CF(k) > A Then
+                        CF(k) = C1F
+                        CF(k - 1) += 1
+                    End If
+                Next
+            Loop Until CF(0) > A
+        Next
+
+        LblState.Text = Date.Now & " 搜索完成 -> " & LBox.Items.Count.ToString
+        Debug.Print(Date.Now & " 搜索完成")
+    End Sub
+    Function OutputInsCmd(Cmd As String, InsR() As Integer, CF() As Integer) As String
+        Dim i As Integer
+        Dim S() = SplitCmd(Cmd).Split(" ")
+        Dim ZR As Integer = 0
+        Dim R As String = ""
+        For i = 0 To S.Length - 1
+            If ZR = InsR.Length Then
+                R &= S(i) & " "
+            ElseIf i = InsR(ZR) Then
+                R &= "跳" & CF(ZR).ToString & " "
+                R &= S(i) & " "
+                ZR += 1
+            Else
+                R &= S(i) & " "
+            End If
+        Next
+        Return GetInsCmd(R.TrimEnd)
+    End Function
+    Function SplitCmd(Cmd As String) As String
+        Dim i, j As Integer
+        Dim CL, CU As Integer
+        Dim S() = Cmd.Split(" ")
+        Dim CS As String
+        Dim R As String = ""
+        For i = 0 To S.Length - 1
+            GetNum(S(i), CL, CU)
+            CS = GetCmd(S(i))
+            For j = 1 To CU
+                R &= CS & "1" & " "
+            Next
+        Next
+        Return R.TrimEnd
+    End Function
+    Function GetInsCmd(Cmd As String) As String
+        Dim S() = Cmd.Split(" ")
+        Dim CL, CU, CL2, CU2 As Integer
+        Dim TU As Integer
+        Dim R As String = ""
+        For i As Integer = 0 To S.Length - 1
+            GetNum(S(i), CL, CU)
+            TU = CU
+            For j As Integer = i + 1 To S.Length - 1
+                If GetCmd(S(i)) = GetCmd(S(j)) Then
+                    GetNum(S(j), CL2, CU2)
+                    TU += CU2
+                    i += 1
+                Else
+                    Exit For
+                End If
+            Next
+            R &= GetCmd(S(i)) & TU.ToString & " "
+        Next
+        Return R.TrimEnd
+    End Function
+    Function GetAirCmd(S As String) As Integer
+        Dim T() = S.Split(" ")
+        Dim CL, CU As Integer
+        Dim F As Integer = 0
+        For i As Integer = 0 To T.Length - 1
+            If InStr(T(i), "跳") > 0 Then
+                Return F
+            Else
+                GetNum(T(i), CL, CU)
+                F += CU
+            End If
+        Next
+        Return 0
+    End Function
+
+    Private Sub BCmdR_Click(sender As Object, e As EventArgs) Handles BCmdR.Click
+        T2.Text = RCmd（T2.Text）
+    End Sub
+
+    Private Sub BtnUndo_Click(sender As Object, e As EventArgs) Handles BtnUndo.Click
+        If SpikeBlk.Length > 0 Then
+            ReDim Preserve SpikeBlk(SpikeBlk.Length - 2)
+        End If
+        DrawBG(NumW.Value, NumH.Value)
+    End Sub
+
+    Private Sub BtnGenJump_Click(sender As Object, e As EventArgs) Handles BtnGenJump.Click
+
+    End Sub
+
+    Private Sub LHis_SelectedIndexChanged(sender As Object, e As EventArgs) Handles LHis.SelectedIndexChanged
+        Dim S() = LHis.SelectedItem.ToString.Split("|")
+        If S.Length = 3 Then
+            T20.Text = S(0)
+            T2.Text = S(1)
+            T21.Text = S(2)
+        End If
+    End Sub
+
+    Private Sub BAddHis_Click(sender As Object, e As EventArgs) Handles BAddHis.Click
+        LHis.Visible = True
+        LHis.Items.Add(T20.Text & "|" & T2.Text & "|" & T21.Text)
+    End Sub
+
+    Private Sub TimerEmu_Tick(sender As Object, e As EventArgs) Handles TimerEmu.Tick
+        Dim p(5) As String
+        p(0) = Hex(YuzuM.ReadMemory(Of Single)(XAddr)).PadLeft(8, "0"c)
+        p(1) = Hex(YuzuM.ReadMemory(Of Single)(YAddr)).PadLeft(8, "0"c)
+        p(2) = Hex(YuzuM.ReadMemory(Of Single)(SxAddr)).PadLeft(8, "0"c)
+        p(3) = Hex(YuzuM.ReadMemory(Of Single)(SyAddr)).PadLeft(8, "0"c)
+        p(4) = Hex(YuzuM.ReadMemory(Of Single)(AxAddr)).PadLeft(8, "0"c)
+        p(5) = Hex(YuzuM.ReadMemory(Of Single)(AyAddr)).PadLeft(8, "0"c)
+
+        T1.Text = "X =[" & p(0) & "]" & Hex2Dbl(p(0)) & vbCrLf &
+                    "Y =[" & p(1) & "]" & Hex2Dbl(p(1)) & vbCrLf &
+                    "Sx=[" & p(2) & "]" & Hex2Dbl(p(2)) & vbCrLf &
+                    "Sy=[" & p(3) & "]" & Hex2Dbl(p(3)) & vbCrLf &
+                    "Ax=[" & p(4) & "]" & Hex2Dbl(p(4)) & vbCrLf &
+                    "Ay=[" & p(5) & "]" & Hex2Dbl(p(5))
+    End Sub
+
+    Private Sub BEmu_Click(sender As Object, e As EventArgs) Handles BEmu.Click
+        'If isFind Then
+        '    TimerEmu.Enabled = Not TimerEmu.Enabled
+        '    Me.Text = If(TimerEmu.Enabled, "ON", "OFF")
+        'End If
+    End Sub
+
+    Private Sub BtnTile_Click(sender As Object, e As EventArgs) Handles BtnTile.Click
+        CBItem.BackColor = Color.White
+        BtnTile.BackColor = Color.LightBlue
+        DrawTileMode = 1
+        LoadPItem()
+        PItem.Visible = Not PItem.Visible
+    End Sub
+
+    Sub LoadPItem()
+        PItem.Image = Image.FromFile(Application.StartupPath & "\img\Model\" & ComboBox3.Text & "_Field_" &
+                              ComboBox4.Text & If(CheckBox7.Checked, "_D", "") &
+                              ".Nin_NX_NVN\" & ComboBox3.Text & "_Field_" &
+                              ComboBox4.Text & If(CheckBox7.Checked, "_D", "") & ".png")
+    End Sub
+    Dim SelBackTile As Bitmap, SelBackTileLoc As Point, DrawTileMode As Integer
+    Private Sub PItem_MouseClick(sender As Object, e As MouseEventArgs) Handles PItem.MouseClick
+        If PItem.IsPointInImage(e.X, e.Y) Then
+            SelBackTileLoc = PItem.PointToImage(e.X, e.Y)
+            SelBackTileLoc.X \= 16
+            SelBackTileLoc.Y \= 16
+            SelBackTile = GetTile(SelBackTileLoc.X, SelBackTileLoc.Y)
+            BtnTile.Image = SelBackTile
+        End If
+    End Sub
+
+    Private Sub BtnTile2_Click(sender As Object, e As EventArgs) Handles BtnTile2.Click
+        CBItem.Items.Add(SelBackTile)
+    End Sub
+
+    Private Sub CBItem_SelectedIndexChanged(sender As Object, e As EventArgs) Handles CBItem.SelectedIndexChanged
+        CBItem.BackColor = Color.LightBlue
+        BtnTile.BackColor = Color.White
+        DrawTileMode = 0
+        PItem.Visible = False
+    End Sub
+
+    Private Sub CBItem_MouseClick(sender As Object, e As MouseEventArgs) Handles CBItem.MouseClick
+        CBItem.BackColor = Color.LightBlue
+        BtnTile.BackColor = Color.White
+        DrawTileMode = 0
+        PItem.Visible = False
+    End Sub
+    Dim ImgZoom As Integer = 5
+    Private Sub NumZoom_ValueChanged(sender As Object, e As EventArgs) Handles NumZoom.ValueChanged
+        ImgZoom = NumZoom.Value
+        GetCharAct()
+    End Sub
+
 End Class

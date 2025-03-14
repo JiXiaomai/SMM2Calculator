@@ -2,21 +2,35 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net6.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
     <StartupObject>Sub Main</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
     <MyType>WindowsForms</MyType>
     <UseWPF>False</UseWPF>
-    <ApplicationIcon>5.ico</ApplicationIcon>
+    <ApplicationIcon>BlockHatena_Alb.ico</ApplicationIcon>
     <Title>微操模拟器</Title>
     <Authors>Ji XiaoMai</Authors>
     <PackageIcon>Lyt_Edit_PaletteSound--Lyt_E_P_SE_Boo.png</PackageIcon>
     <AssemblyName>SMM2Calculator</AssemblyName>
     <ApplicationManifest>My Project\app.manifest</ApplicationManifest>
+    <Platforms>AnyCPU;x64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="5.ico" />
+    <Compile Remove="Font\**" />
+    <Compile Remove="旧版本\**" />
+    <EmbeddedResource Remove="Font\**" />
+    <EmbeddedResource Remove="旧版本\**" />
+    <None Remove="Font\**" />
+    <None Remove="旧版本\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="fusion-pixel-12px-proportional.ttc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="BlockHatena_Alb.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,6 +42,7 @@
   <ItemGroup>
     <PackageReference Include="AnimatedGif" Version="1.0.5" />
     <PackageReference Include="CyotekImageBox" Version="1.3.1" />
+    <PackageReference Include="ProcessMemoryReader" Version="1.5.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -41,6 +56,16 @@
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
     </Compile>
+    <Compile Update="My Project\Settings.Designer.vb">
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+    <Compile Update="Resource1.Designer.vb">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resource1.resx</DependentUpon>
+    </Compile>
   </ItemGroup>
 
   <ItemGroup>
@@ -48,6 +73,11 @@
       <CustomToolNamespace>My.Resources</CustomToolNamespace>
       <Generator>VbMyResourcesResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.vb</LastGenOutput>
+    </EmbeddedResource>
+    <EmbeddedResource Update="Resource1.resx">
+      <CustomToolNamespace>My.Resources</CustomToolNamespace>
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resource1.Designer.vb</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
 
@@ -67,6 +97,11 @@
     <None Update="My Project\Application.myapp">
       <Generator>MyApplicationCodeGenerator</Generator>
       <LastGenOutput>Application.Designer.vb</LastGenOutput>
+    </None>
+    <None Update="My Project\Settings.settings">
+      <CustomToolNamespace>My</CustomToolNamespace>
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.vb</LastGenOutput>
     </None>
   </ItemGroup>
 
